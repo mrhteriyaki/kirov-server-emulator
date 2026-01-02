@@ -36,6 +36,14 @@ This project aims to:
 - Python 3.11+
 - pip
 
+### Game Client Setup
+
+To redirect the game client to your emulator, you need to install the [RA3 Game Proxy](https://github.com/sokie/ra3_game_proxy/):
+
+1. Download or build the proxy from https://github.com/sokie/ra3_game_proxy/
+2. Install it to your game's `Data/` folder (e.g., `C:\Program Files\EA Games\Red Alert 3\Data\`)
+3. Configure the proxy to point to your emulator server
+
 ### Installation
 
 1. Clone the repository:
