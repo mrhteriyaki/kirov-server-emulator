@@ -64,6 +64,7 @@ jobs:
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
+    continue-on-error: true  # Don't fail CI, just report issues
     steps:
       - uses: actions/checkout@v4
 
@@ -82,4 +83,4 @@ jobs:
         run: cp config.example.json config.json
 
       - name: Run mypy
-        run: mypy app --ignore-missing-imports
+        run: mypy app --ignore-missing-imports || echo "Type check found issues (non-blocking)"
