@@ -9,12 +9,16 @@ from typing import TYPE_CHECKING
 from app.models.irc_types import (
     IRCMessage, IRCNumeric, IRCCommand, GameSpyCommand
 )
+from app.models.peerchat_state import (
+    irc_channels, irc_clients, irc_clients_lock,
+    join_channel, part_channel
+)
 from app.util.logging_helper import get_logger
 from app.util.peerchat_crypt import PeerchatCipherFactory
 from app.config.app_settings import app_config
 
 if TYPE_CHECKING:
-    from app.raw.peerchat import IRCClient, irc_clients, irc_channels, irc_clients_lock, join_channel, part_channel
+    from app.servers.peerchat_server import IRCClient
 
 logger = get_logger(__name__)
 
@@ -133,7 +137,6 @@ class IRCFactory:
             return
 
         # Check if nickname is already in use
-        from app.raw.peerchat import irc_clients, irc_clients_lock
         with irc_clients_lock:
             if new_nick in irc_clients and irc_clients[new_nick] != client:
                 await client.send_numeric(IRCNumeric.ERR_NICKNAMEINUSE, new_nick, 'Nickname is already in use')
@@ -333,7 +336,6 @@ class IRCFactory:
             keys_string = keys_string[1:]
         requested_keys = [k for k in keys_string.split('\\') if k]
 
-        from app.raw.peerchat import irc_channels, irc_clients, irc_clients_lock
 
         # Check if channel exists
         if channel_name not in irc_channels:
@@ -405,7 +407,6 @@ class IRCFactory:
         target_nick = message.params[1]
         keys_string = message.params[2]
 
-        from app.raw.peerchat import irc_channels
 
         # Check if channel exists
         if channel_name not in irc_channels:
@@ -473,8 +474,7 @@ class IRCFactory:
 
         if target.startswith('#'):
             # Channel message - broadcast to all members
-            from app.raw.peerchat import irc_channels
-
+    
             if target not in irc_channels:
                 await client.send_numeric(IRCNumeric.ERR_NOSUCHCHANNEL, target, 'No such channel')
                 return
@@ -492,8 +492,7 @@ class IRCFactory:
             await client.broadcast_to_channel(target, utm_message, exclude_self=True)
         else:
             # Direct message to one or more users (comma-separated)
-            from app.raw.peerchat import irc_clients, irc_clients_lock
-
+    
             # Split comma-separated targets
             targets = [t.strip() for t in target.split(',') if t.strip()]
 
@@ -553,7 +552,6 @@ class IRCFactory:
 
         target = message.params[0]
 
-        from app.raw.peerchat import irc_channels, irc_clients, irc_clients_lock
 
         if target.startswith('#'):
             # WHO for channel
@@ -631,7 +629,6 @@ class IRCFactory:
                 continue
 
             # Join channel
-            from app.raw.peerchat import join_channel
             await join_channel(client, channel_name)
 
             # Send JOIN notification to all channel members
@@ -668,7 +665,6 @@ class IRCFactory:
         await client.broadcast_to_channel(channel_name, part_message, exclude_self=False)
 
         # Remove from channel
-        from app.raw.peerchat import part_channel
         await part_channel(client, channel_name, reason)
 
     @staticmethod
@@ -683,7 +679,6 @@ class IRCFactory:
     @staticmethod
     async def send_names(client: 'IRCClient', channel_name: str):
         """Send NAMES list for a channel."""
-        from app.raw.peerchat import irc_channels
 
         if channel_name not in irc_channels:
             await client.send_numeric(IRCNumeric.ERR_NOSUCHCHANNEL, channel_name, 'No such channel')
@@ -723,7 +718,6 @@ class IRCFactory:
 
         channel_name = message.params[0]
 
-        from app.raw.peerchat import irc_channels
 
         if channel_name not in irc_channels:
             await client.send_numeric(IRCNumeric.ERR_NOSUCHCHANNEL, channel_name, 'No such channel')
@@ -770,8 +764,7 @@ class IRCFactory:
 
         if target.startswith('#'):
             # Channel mode
-            from app.raw.peerchat import irc_channels
-
+    
             if target not in irc_channels:
                 await client.send_numeric(IRCNumeric.ERR_NOSUCHCHANNEL, target, 'No such channel')
                 return
@@ -841,8 +834,7 @@ class IRCFactory:
 
         # Channel message
         if target.startswith('#'):
-            from app.raw.peerchat import irc_channels
-
+    
             if target not in irc_channels:
                 await client.send_numeric(IRCNumeric.ERR_NOSUCHCHANNEL, target, 'No such channel')
                 return
@@ -861,8 +853,7 @@ class IRCFactory:
 
         # Private message
         else:
-            from app.raw.peerchat import irc_clients, irc_clients_lock
-
+    
             with irc_clients_lock:
                 if target not in irc_clients:
                     await client.send_numeric(IRCNumeric.ERR_NOSUCHNICK, target, 'No such nick/channel')
@@ -895,8 +886,7 @@ class IRCFactory:
 
         # Channel notice
         if target.startswith('#'):
-            from app.raw.peerchat import irc_channels
-
+    
             if target not in irc_channels:
                 return  # Silently ignore
 
@@ -913,8 +903,7 @@ class IRCFactory:
 
         # Private notice
         else:
-            from app.raw.peerchat import irc_clients, irc_clients_lock
-
+    
             with irc_clients_lock:
                 if target not in irc_clients:
                     return  # Silently ignore

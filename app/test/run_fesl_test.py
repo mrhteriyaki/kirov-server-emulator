@@ -16,7 +16,7 @@ from app.db.database import engine, get_session
 from app.db.crud import create_new_user, get_personas_for_user
 from app.models.models import UserCreate
 from app.models.fesl_types import FeslType, FeslHeader
-from app.raw.fesl_server import FeslServer
+from app.servers.fesl_server import FeslServer
 
 
 # Test user credentials

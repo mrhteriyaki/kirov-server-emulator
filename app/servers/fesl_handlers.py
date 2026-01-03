@@ -1,13 +1,13 @@
 """
-FESL Account Factory - Handles all 'acct' (account) protocol commands.
+FESL Command Handlers - Handles all FESL protocol commands.
 
-This module processes authentication-related FESL commands:
-- NuLogin: Initial user authentication
-- NuGetPersonas: Get list of personas for a user
-- NuLoginPersona: Select a persona to play as
-- GameSpyPreAuth: Generate ticket for GPServer handshake
+This module processes both 'fsys' (system) and 'acct' (account) commands:
+- fsys: Hello, MemCheck (connection initialization)
+- acct: NuLogin, NuGetPersonas, NuLoginPersona, GameSpyPreAuth (authentication)
 """
 
+import random
+import time
 from typing import TypeVar, Optional
 
 from app.db.crud import (
@@ -24,18 +24,22 @@ from app.db.crud import (
 from app.db.database import get_session
 from app.models.fesl_types import (
     FeslBaseModel,
+    FeslHeader,
+    HelloClient,
+    HelloServer,
+    MemcheckServer,
+    DomainPartition,
     NuLoginClient,
     NuLoginServer,
     EntitledGameFeatureWrapper,
     NuGetPersonasClient,
-    NuLoginPersonaClient,
-    GameSpyPreAuthClient,
     NuGetPersonasServer,
+    NuLoginPersonaClient,
     NuLoginPersonaServer,
-    GameSpyPreAuthServer,
     NuAddPersonaClient,
     NuAddPersonaServer,
-    FeslHeader,
+    GameSpyPreAuthClient,
+    GameSpyPreAuthServer,
     client_data_var,
 )
 from app.util.logging_helper import get_logger
@@ -43,13 +47,53 @@ from app.util.logging_helper import get_logger
 logger = get_logger(__name__)
 
 
-class AcctFactory:
-    """
-    Factory class for handling FESL account commands.
+T = TypeVar('T', bound=FeslBaseModel)
 
-    Each handler method processes a specific TXN (transaction) type
-    and returns the appropriate response model.
+
+class FeslHandlers:
     """
+    Unified FESL command handlers for fsys and acct commands.
+
+    This class replaces FsysFactory and AcctFactory with a single handler
+    that routes commands based on the FESL command type and TXN.
+    """
+
+    # ==========================================================================
+    # fsys handlers
+    # ==========================================================================
+
+    @staticmethod
+    def handle_hello(model_data: HelloClient) -> list[FeslBaseModel]:
+        """
+        Handle Hello request - returns both MemCheck and Hello response.
+        The game expects both packets together.
+        """
+        assert isinstance(model_data, HelloClient)
+
+        # MemCheck must be sent with Hello
+        memcheck_response = MemcheckServer(
+            txn="MemCheck", type=0, salt=random.getrandbits(32)
+        )
+
+        domain_partition = DomainPartition(domain="eagames", subDomain="CNCRA3")
+        time_buff = time.strftime('"%b-%d-%Y %H:%M:%S UTC"', time.gmtime())
+        hello_response = HelloServer(
+            txn="Hello",
+            theaterIp="0.0.0.0",
+            theaterPort=0,
+            messengerIp="0.0.0.0",
+            messengerPort=0,
+            activityTimeoutSecs=0,
+            curTime=time_buff,
+            domainPartition=domain_partition,
+        )
+
+        # Order matters: Hello first (uses client's packet number), then MemCheck (server-initiated, packet 0)
+        return [hello_response, memcheck_response]
+
+    # ==========================================================================
+    # acct handlers
+    # ==========================================================================
 
     @staticmethod
     def handle_login(model_data: NuLoginClient) -> Optional[NuLoginServer]:
@@ -88,7 +132,6 @@ class AcctFactory:
 
         if not user:
             logger.debug("Authentication failed for nuid: %s", model_data.nuid)
-            # TODO: Return proper error response
             return None
 
         # Update MAC address if provided
@@ -203,7 +246,6 @@ class AcctFactory:
         existing_persona = get_persona_by_name(db_session, model_data.name)
         if existing_persona:
             logger.debug("NuAddPersona: Persona name already taken: %s", model_data.name)
-            # TODO: Return proper error response for duplicate name
             return None
 
         # Create the new persona
@@ -313,7 +355,6 @@ class AcctFactory:
         db_session = next(get_session())
 
         # Create pre-auth ticket with a random secret embedded in the ticket
-        # The client extracts this secret from the ticket for proof calculation
         preauth = create_preauth_ticket(
             session=db_session,
             user_id=user.id,
@@ -333,33 +374,59 @@ class AcctFactory:
         logger.debug("GameSpyPreAuth successful: ticket created for user=%s, persona=%s", user.id, persona.id)
         return response
 
-    T = TypeVar('T', bound=FeslBaseModel)
+    # ==========================================================================
+    # Command routing
+    # ==========================================================================
 
     @staticmethod
-    def parse(header: FeslHeader, model_data: T) -> T | None:
+    def parse(header: FeslHeader, model_data: FeslBaseModel) -> FeslBaseModel | list[FeslBaseModel] | None:
         """
-        Route incoming FESL account commands to appropriate handlers.
+        Route incoming FESL commands to appropriate handlers.
 
         Args:
             header: FESL packet header
             model_data: Parsed request model
 
         Returns:
-            Response model or None
+            Response model, list of response models, or None
         """
-        logger.debug("Parsing TXN: %s", model_data.txn)
+        logger.debug("Parsing command=%s, TXN=%s", header.fesl_command, model_data.txn)
 
+        if header.fesl_command == "fsys":
+            return FeslHandlers._parse_fsys(header, model_data)
+        elif header.fesl_command == "acct":
+            return FeslHandlers._parse_acct(header, model_data)
+
+        logger.debug("Unknown command: %s", header.fesl_command)
+        return None
+
+    @staticmethod
+    def _parse_fsys(header: FeslHeader, model_data: FeslBaseModel) -> FeslBaseModel | list[FeslBaseModel] | None:
+        """Route fsys commands."""
+        match model_data.txn:
+            case "Hello":
+                if isinstance(model_data, HelloClient):
+                    return FeslHandlers.handle_hello(model_data)
+            case "MemCheck":
+                # Client MemCheck response - no action needed
+                pass
+
+        return None
+
+    @staticmethod
+    def _parse_acct(header: FeslHeader, model_data: FeslBaseModel) -> FeslBaseModel | None:
+        """Route acct commands."""
         match model_data.txn:
             case 'NuLogin':
-                return AcctFactory.handle_login(model_data)
+                return FeslHandlers.handle_login(model_data)
             case 'NuGetPersonas':
-                return AcctFactory.handle_get_personas(model_data)
+                return FeslHandlers.handle_get_personas(model_data)
             case 'NuAddPersona':
-                return AcctFactory.handle_add_persona(model_data)
+                return FeslHandlers.handle_add_persona(model_data)
             case 'NuLoginPersona':
-                return AcctFactory.handle_login_persona(model_data)
+                return FeslHandlers.handle_login_persona(model_data)
             case 'GameSpyPreAuth':
-                return AcctFactory.handle_gamespy_pre_auth(model_data)
+                return FeslHandlers.handle_gamespy_pre_auth(model_data)
             case 'GetTelemetryToken':
                 # No response expected for telemetry
                 pass

@@ -356,7 +356,7 @@ class TestTicketParsing:
 
 
 class TestFeslHandlersIntegration:
-    """Integration tests for FESL AcctFactory handlers with real database operations."""
+    """Integration tests for FESL FeslHandlers handlers with real database operations."""
 
     @pytest.fixture(autouse=True)
     def setup_database(self):
@@ -371,7 +371,7 @@ class TestFeslHandlersIntegration:
 
     def test_nulogin_handler_flow(self):
         """Test that NuLogin handler authenticates and creates session correctly."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import NuLoginClient, client_data_var
 
         with self.get_session() as session:
@@ -395,7 +395,7 @@ class TestFeslHandlersIntegration:
         )
 
         # Call handler
-        response = AcctFactory.handle_login(login_request)
+        response = FeslHandlers.handle_login(login_request)
 
         assert response is not None
         assert response.txn == 'NuLogin'
@@ -407,7 +407,7 @@ class TestFeslHandlersIntegration:
 
     def test_nulogin_wrong_password(self):
         """Test that NuLogin handler rejects wrong password."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import NuLoginClient, client_data_var
 
         with self.get_session() as session:
@@ -427,13 +427,13 @@ class TestFeslHandlersIntegration:
             macAddr='$aabbccddeeff'
         )
 
-        response = AcctFactory.handle_login(login_request)
+        response = FeslHandlers.handle_login(login_request)
 
         assert response is None
 
     def test_nugetpersonas_handler_flow(self):
         """Test NuGetPersonas handler returns correct personas."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import NuLoginClient, NuGetPersonasClient, client_data_var
 
         with self.get_session() as session:
@@ -453,14 +453,14 @@ class TestFeslHandlersIntegration:
             password='personapass',
             macAddr='$aabbccddeeff'
         )
-        AcctFactory.handle_login(login_request)
+        FeslHandlers.handle_login(login_request)
 
         # Then get personas
         personas_request = NuGetPersonasClient(
             txn='NuGetPersonas',
             namespace=''
         )
-        response = AcctFactory.handle_get_personas(personas_request)
+        response = FeslHandlers.handle_get_personas(personas_request)
 
         assert response is not None
         assert response.txn == 'NuGetPersonas'
@@ -469,7 +469,7 @@ class TestFeslHandlersIntegration:
 
     def test_nuloginpersona_handler_flow(self):
         """Test NuLoginPersona handler selects persona correctly."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import (
             NuLoginClient, NuLoginPersonaClient, client_data_var
         )
@@ -493,7 +493,7 @@ class TestFeslHandlersIntegration:
             password='selectpass',
             macAddr='$aabbccddeeff'
         )
-        login_response = AcctFactory.handle_login(login_request)
+        login_response = FeslHandlers.handle_login(login_request)
         original_lkey = login_response.lkey
 
         # Select persona
@@ -501,7 +501,7 @@ class TestFeslHandlersIntegration:
             txn='NuLoginPersona',
             name='selectpersona'
         )
-        response = AcctFactory.handle_login_persona(persona_request)
+        response = FeslHandlers.handle_login_persona(persona_request)
 
         assert response is not None
         assert response.txn == 'NuLoginPersona'
@@ -511,7 +511,7 @@ class TestFeslHandlersIntegration:
 
     def test_gamespypreauth_handler_flow(self):
         """Test GameSpyPreAuth handler generates valid ticket."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import (
             NuLoginClient, NuLoginPersonaClient, GameSpyPreAuthClient, client_data_var
         )
@@ -535,18 +535,18 @@ class TestFeslHandlersIntegration:
             password='preauthpass',
             macAddr='$aabbccddeeff'
         )
-        AcctFactory.handle_login(login_request)
+        FeslHandlers.handle_login(login_request)
 
         # Select persona
         persona_request = NuLoginPersonaClient(
             txn='NuLoginPersona',
             name='preauthtest'
         )
-        AcctFactory.handle_login_persona(persona_request)
+        FeslHandlers.handle_login_persona(persona_request)
 
         # Get pre-auth ticket
         preauth_request = GameSpyPreAuthClient(txn='GameSpyPreAuth')
-        response = AcctFactory.handle_gamespy_pre_auth(preauth_request)
+        response = FeslHandlers.handle_gamespy_pre_auth(preauth_request)
 
         assert response is not None
         assert response.txn == 'GameSpyPreAuth'
@@ -570,7 +570,7 @@ class TestFeslHandlersIntegration:
         - After NuLoginPersona: userId == user.id, profileId == persona.id (different!)
 
         """
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import (
             NuLoginClient, NuLoginPersonaClient, client_data_var
         )
@@ -599,7 +599,7 @@ class TestFeslHandlersIntegration:
             password='idtestpass',
             macAddr='$aabbccddeeff'
         )
-        login_response = AcctFactory.handle_login(login_request)
+        login_response = FeslHandlers.handle_login(login_request)
 
         assert login_response is not None
         assert login_response.userId == user_id
@@ -611,7 +611,7 @@ class TestFeslHandlersIntegration:
             txn='NuLoginPersona',
             name='idtest'
         )
-        persona_response = AcctFactory.handle_login_persona(persona_request)
+        persona_response = FeslHandlers.handle_login_persona(persona_request)
 
         assert persona_response is not None
         assert persona_response.userId == user_id  # userId stays as user.id
@@ -621,7 +621,7 @@ class TestFeslHandlersIntegration:
 
     def test_complete_fesl_to_gpserver_handoff(self):
         """Test complete FESL authentication followed by GPServer ticket validation."""
-        from app.raw.acct_factory import AcctFactory
+        from app.servers.fesl_handlers import FeslHandlers
         from app.models.fesl_types import (
             NuLoginClient, NuLoginPersonaClient, GameSpyPreAuthClient, client_data_var
         )
@@ -645,7 +645,7 @@ class TestFeslHandlersIntegration:
             password='fullflowpass',
             macAddr='$aabbccddeeff'
         )
-        login_response = AcctFactory.handle_login(login_request)
+        login_response = FeslHandlers.handle_login(login_request)
         assert login_response is not None
         assert login_response.userId == user.id
         # After NuLogin, profileId == userId
@@ -656,7 +656,7 @@ class TestFeslHandlersIntegration:
             txn='NuLoginPersona',
             name='fullflow'
         )
-        persona_response = AcctFactory.handle_login_persona(persona_request)
+        persona_response = FeslHandlers.handle_login_persona(persona_request)
         assert persona_response is not None
         # After NuLoginPersona: userId stays same, profileId becomes persona.id
         assert persona_response.userId == user.id
@@ -664,7 +664,7 @@ class TestFeslHandlersIntegration:
 
         # Step 3: GameSpyPreAuth
         preauth_request = GameSpyPreAuthClient(txn='GameSpyPreAuth')
-        preauth_response = AcctFactory.handle_gamespy_pre_auth(preauth_request)
+        preauth_response = FeslHandlers.handle_gamespy_pre_auth(preauth_request)
         assert preauth_response is not None
 
         # Step 4: GPServer validates ticket (simulating GPServer login handler)

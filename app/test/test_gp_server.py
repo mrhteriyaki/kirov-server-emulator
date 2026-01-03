@@ -13,7 +13,7 @@ import pytest
 import hashlib
 import base64
 from unittest.mock import MagicMock, patch
-from app.raw.gp_server import (
+from app.servers.gp_server import (
     GpServer,
     generate_login_response,
     TEST_USER_ID as GP_TEST_USER_ID,
@@ -543,9 +543,9 @@ class TestGpServerProtocolFlow:
         self.gp_server.sesskey = TEST_SESSKEY
 
         # Mock database calls
-        with patch('app.raw.gp_server.create_session'), \
-             patch('app.raw.gp_server.get_persona_by_id') as mock_persona, \
-             patch('app.raw.gp_server.get_user_by_id') as mock_user:
+        with patch('app.servers.gp_server.create_session'), \
+             patch('app.servers.gp_server.get_persona_by_id') as mock_persona, \
+             patch('app.servers.gp_server.get_user_by_id') as mock_user:
 
             mock_persona_obj = MagicMock()
             mock_persona_obj.id = 200001
@@ -678,9 +678,9 @@ class TestGpServerNewHandlers:
 
     def test_handle_addbuddy_returns_bm4(self):
         """Test addbuddy returns bm type 4 acknowledgment."""
-        with patch('app.raw.gp_server.create_session'), \
-             patch('app.raw.gp_server.create_buddy_request'), \
-             patch('app.raw.gp_server.get_persona_by_id'):
+        with patch('app.servers.gp_server.create_session'), \
+             patch('app.servers.gp_server.create_buddy_request'), \
+             patch('app.servers.gp_server.get_persona_by_id'):
 
             response = self.gp_server.handle_addbuddy({
                 "sesskey": TEST_SESSKEY,
@@ -704,8 +704,8 @@ class TestGpServerNewHandlers:
 
     def test_handle_authadd_calls_accept_buddy_request(self):
         """Test authadd calls accept_buddy_request."""
-        with patch('app.raw.gp_server.create_session'), \
-             patch('app.raw.gp_server.accept_buddy_request') as mock_accept:
+        with patch('app.servers.gp_server.create_session'), \
+             patch('app.servers.gp_server.accept_buddy_request') as mock_accept:
             mock_accept.return_value = True
 
             response = self.gp_server.handle_authadd({
@@ -719,8 +719,8 @@ class TestGpServerNewHandlers:
 
     def test_handle_pinvite_creates_invite(self):
         """Test pinvite creates game invite."""
-        with patch('app.raw.gp_server.create_session'), \
-             patch('app.raw.gp_server.create_game_invite') as mock_invite:
+        with patch('app.servers.gp_server.create_session'), \
+             patch('app.servers.gp_server.create_game_invite') as mock_invite:
 
             response = self.gp_server.handle_pinvite({
                 "sesskey": TEST_SESSKEY,

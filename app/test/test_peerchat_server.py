@@ -26,8 +26,8 @@ from app.models.irc_types import (
     IRCMessage, IRCUser, IRCChannel, IRCNumeric,
     IRCCommand, GameSpyCommand
 )
-from app.raw.irc_factory import IRCFactory
-from app.raw.peerchat import (
+from app.servers.peerchat_handlers import IRCFactory
+from app.servers.peerchat_server import (
     IRCClient, handle_irc_client, join_channel, part_channel,
     irc_channels, irc_clients, irc_clients_lock
 )

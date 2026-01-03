@@ -4,12 +4,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.raw.fesl_server import FeslServer
-from app.raw.gp_server import GpServer
-from app.raw.peerchat import start_irc_server
-from app.raw.session_manager import SessionManager
-from app.raw.natneg_server import start_natneg_server
-from app.raw.query_master import start_master_server, start_heartbeat_server
+from app.servers.fesl_server import start_fesl_server
+from app.servers.gp_server import start_gp_server
+from app.servers.peerchat_server import start_irc_server
+from app.servers.sessions import SessionManager
+from app.servers.natneg_server import start_natneg_server
+from app.servers.query_master_tcp import start_master_server
+from app.servers.query_master_udp import start_heartbeat_server
 from app.rest.routes import router as rest_router
 from app.soap.service import soap_router
 
@@ -31,14 +32,13 @@ async def lifespan(app: FastAPI):
     log_level = getattr(logging, app_config.logging.level.upper(), logging.INFO)
     setup_logging(level=log_level)
 
-    loop = asyncio.get_running_loop()
     session_manager = SessionManager()
 
     # Start FESL server
     fesl_host = app_config.fesl.host
     fesl_port = app_config.fesl.port
     print(f"INFO:     Starting FESL server on {fesl_host}:{fesl_port}...")
-    fesl_server = await loop.create_server(lambda: FeslServer(), fesl_host, fesl_port)
+    fesl_server = await start_fesl_server(fesl_host, fesl_port)
     print(f"INFO:     FESL server is listening on {fesl_host}:{fesl_port}")
 
     # Start Peerchat IRC server
@@ -52,9 +52,7 @@ async def lifespan(app: FastAPI):
     gp_host = app_config.gp.host
     gp_port = app_config.gp.port
     print(f"INFO:     Starting GameSpy server on {gp_host}:{gp_port}...")
-    gp_server = await loop.create_server(
-        lambda: GpServer(session_manager), gp_host, gp_port
-    )
+    gp_server = await start_gp_server(gp_host, gp_port, session_manager)
     print(f"INFO:     GameSpy server is listening on {gp_host}:{gp_port}")
 
     # Start NAT Negotiation server

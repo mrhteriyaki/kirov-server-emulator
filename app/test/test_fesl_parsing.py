@@ -13,7 +13,7 @@ import pytest
 import struct
 import base64
 
-from app.raw.fesl import parse_game_data, create_packet
+from app.servers.fesl_server import parse_game_data, create_packet
 from app.models.fesl_types import (
     FeslHeader,
     FeslType,
