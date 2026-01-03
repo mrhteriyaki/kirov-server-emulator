@@ -94,7 +94,9 @@ def _model_to_string(model: FeslBaseModel) -> str:
     return model.to_key_value_string()
 
 
-def create_packet(fesl_command: str, fesl_type: FeslType, packet_number: int, data_model: FeslBaseModel) -> Optional[bytearray]:
+def create_packet(
+    fesl_command: str, fesl_type: FeslType, packet_number: int, data_model: FeslBaseModel
+) -> Optional[bytearray]:
     """
     Generates a complete FESL packet byte array from provided data.
 
