@@ -46,6 +46,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
+      - name: Set up config
+        run: cp config.example.json config.json
+
       - name: Run tests
         run: |
           pytest --cov=app --cov-report=xml --cov-report=term-missing
@@ -74,6 +77,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+
+      - name: Set up config
+        run: cp config.example.json config.json
 
       - name: Run mypy
         run: mypy app --ignore-missing-imports
