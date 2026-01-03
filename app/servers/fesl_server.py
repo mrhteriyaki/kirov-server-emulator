@@ -8,7 +8,6 @@ This module combines the server protocol handler with packet parsing/serializati
 import asyncio
 import struct
 import threading
-from typing import Optional
 
 from app.models.fesl_types import (
     FeslBaseModel,
@@ -96,7 +95,7 @@ def _model_to_string(model: FeslBaseModel) -> str:
 
 def create_packet(
     fesl_command: str, fesl_type: FeslType, packet_number: int, data_model: FeslBaseModel
-) -> Optional[bytearray]:
+) -> bytearray | None:
     """
     Generates a complete FESL packet byte array from provided data.
 
