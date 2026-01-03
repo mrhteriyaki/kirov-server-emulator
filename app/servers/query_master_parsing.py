@@ -242,62 +242,6 @@ def apply_filters_to_dict(servers: list, filters: list):
     return filtered_list
 
 
-def parse_server_query_data(data: bytes):
-    """
-    Parses a raw byte string from a game server query, likely based on the
-    GameSpy protocol.
-
-    The data is primarily delimited by null bytes ('\\x00').
-
-    Args:
-        data: The raw byte string to parse.
-    """
-    logger.debug("Starting Data Parse")
-    logger.debug("Raw Data (as bytes): %s", data)
-
-    parts = [part for part in data.split(b"\x00") if part]
-    parsed_data = {}
-
-    if not parts:
-        logger.debug("No parsable parts found.")
-        return
-
-    # Debug: Show all parts
-    logger.debug("All Parts After Splitting:")
-    for i, part in enumerate(parts):
-        try:
-            decoded = part.decode("utf-8", errors="ignore")
-            logger.debug("Part %d: %s -> '%s'", i, part, decoded)
-        except:
-            logger.debug("Part %d: %s -> [Could not decode]", i, part)
-
-    # --- Interpretation of the Parts ---
-    if len(parts) > 3:
-        parsed_data["game_name"] = parts[3].decode("utf-8", errors="ignore")
-        logger.debug("Game Name: %s", parsed_data["game_name"])
-
-    if len(parts) > 5:
-        filter_string = parts[5].decode("utf-8", errors="ignore").split("%", 1)[-1]
-        parsed_data["filter_raw"] = filter_string
-        logger.debug("Raw Filter String: %s", parsed_data["filter_raw"])
-
-        # Parse the filter string into a structured format
-        parsed_conditions = parse_filter_string(filter_string)
-        parsed_data["filter_conditions"] = parsed_conditions
-        logger.debug("Parsed Filter Conditions: %s", parsed_conditions)
-
-        # Generate SQL WHERE clause
-        sql_clause = generate_sql_where_clause(parsed_conditions)
-        logger.debug("Generated SQL Clause: %s", sql_clause)
-
-    if len(parts) > 6:
-        keys_string = parts[6].decode("utf-8", errors="ignore")
-        parsed_data["keys"] = [key for key in keys_string.split("\\") if key]
-        logger.debug("Server Info Keys: %s", parsed_data["keys"])
-
-    logger.debug("End of Parse")
-
-
 # =============================================================================
 # TCP Request Parser
 # =============================================================================
