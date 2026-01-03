@@ -20,15 +20,15 @@ import pytest
 pytest_plugins = ("pytest_asyncio",)
 
 from app.models.irc_types import IRCChannel, IRCMessage, IRCNumeric, IRCUser
-from app.servers.peerchat_handlers import IRCFactory
-from app.servers.peerchat_server import (
-    IRCClient,
+from app.models.peerchat_state import (
     irc_channels,
     irc_clients,
     irc_clients_lock,
     join_channel,
     part_channel,
 )
+from app.servers.peerchat_handlers import IRCFactory
+from app.servers.peerchat_server import IRCClient
 
 # =============================================================================
 # Test Data Constants (placeholder/fake data)
