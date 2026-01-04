@@ -45,9 +45,6 @@ class NatNegSettings(BaseModel):
     port: int = Field(default=27901, gt=1024, lt=65536)
     session_timeout: int = Field(default=30)  # Seconds to wait for both clients
     enabled: bool = Field(default=True)
-    force_lan_mode: bool = Field(
-        default=True, description="Always use LAN mode (local IPs). WAN mode (NAT punchthrough) is experimental."
-    )
 
 
 class MasterServerSettings(BaseModel):

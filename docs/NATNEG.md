@@ -177,8 +177,7 @@ The NAT negotiation server is configured via `config.json`:
   "natneg": {
     "host": "0.0.0.0",
     "port": 27901,
-    "enabled": true,
-    "force_lan_mode": true
+    "enabled": true
   }
 }
 ```
@@ -189,21 +188,15 @@ The NAT negotiation server is configured via `config.json`:
 | `port` | `27901` | UDP port |
 | `enabled` | `true` | Enable/disable server |
 | `session_timeout` | `30` | Seconds to wait for both clients |
-| `force_lan_mode` | `true` | Always use LAN mode (local IPs) |
 
-### LAN vs WAN Mode
+### LAN and WAN Support
 
-**LAN mode** (`force_lan_mode: true`, default): CONNECT packets contain clients' local IP addresses from INIT packets. This enables direct P2P communication on the same network without NAT traversal.
+Game always sends 4 INIT packets (port_type 0-3) to increase chance of connection working. When both clients have registered (session ready), the server sends 4 CONNECT packets back to each client:
 
-**WAN mode** (`force_lan_mode: false`): Server auto-detects whether clients are on the same LAN (by comparing public IPs). If not, it uses public IP addresses in CONNECT packets. **Note: WAN mode is experimental** - full NAT punchthrough is not implemented and connections may fail for clients behind restrictive NATs.
+- **port_type 0, 1**: CONNECT with LAN addresses (`local_ip:local_port` from INIT packets)
+- **port_type 2, 3**: CONNECT with WAN addresses (`public_ip:public_port` as seen by the server)
 
-## LAN Detection (when force_lan_mode=false)
-
-When `force_lan_mode` is disabled, the server auto-detects LAN clients by comparing the first 3 octets of their public IPs:
-- `192.168.1.10` and `192.168.1.20` → Same LAN → use local addresses
-- `192.168.1.10` and `192.168.2.10` → Different networks → use public addresses
-
-When LAN mode is active, CONNECT packets contain the `local_ip` and `local_port` from INIT packets (where the game actually listens), rather than the NAT-mapped public addresses.
+The game tries all connections and uses whichever one works. This makes connections work both on LAN and over the Internet without any configuration.
 
 ## Implementation Notes
 
