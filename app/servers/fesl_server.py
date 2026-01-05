@@ -6,8 +6,10 @@ This module combines the server protocol handler with packet parsing/serializati
 """
 
 import asyncio
+import random
 import struct
 import threading
+import time
 
 from app.models.fesl_types import (
     FeslBaseModel,
@@ -28,6 +30,18 @@ from app.servers.fesl_handlers import FeslHandlers
 from app.util.logging_helper import format_hex, get_logger
 
 logger = get_logger(__name__)
+
+# =============================================================================
+# Global Client Tracking
+# =============================================================================
+
+# Global dictionary of connected FESL clients: peername -> FeslServer instance
+fesl_clients: dict[tuple, "FeslServer"] = {}
+fesl_clients_lock = threading.Lock()
+
+# MemCheck interval in seconds (send periodic MemCheck to keep sessions alive)
+# TODO: client disconnects after 4 minutes of inactivity, so this can be 2 minutes also?
+MEMCHECK_INTERVAL = 60  # 1 minute
 
 
 # =============================================================================
@@ -211,15 +225,20 @@ class FeslServer(asyncio.Protocol):
 
     def __init__(self):
         logger.debug("Initializing")
-        self.clients_lock = threading.Lock()
         self.transport = None
         self.peername = None
         self.client_data = {}
+        self.last_memcheck_time = time.time()
 
     def connection_made(self, transport):
         self.transport = transport
         self.peername = transport.get_extra_info("peername")
         logger.debug("New connection from %s", self.peername)
+
+        # Register client in global tracking
+        with fesl_clients_lock:
+            fesl_clients[self.peername] = self
+            logger.debug("Registered FESL client %s (total: %d)", self.peername, len(fesl_clients))
 
     def data_received(self, data):
         logger.debug("Received %d bytes from %s", len(data), self.peername)
@@ -258,6 +277,85 @@ class FeslServer(asyncio.Protocol):
     def connection_lost(self, exc):
         logger.debug("Connection closed for %s", self.peername)
 
+        # Unregister client from global tracking
+        with fesl_clients_lock:
+            if self.peername in fesl_clients:
+                del fesl_clients[self.peername]
+                logger.debug("Unregistered FESL client %s (total: %d)", self.peername, len(fesl_clients))
+
+    def send_memcheck(self):
+        """Send a MemCheck packet to this client."""
+        if not self.transport or self.transport.is_closing():
+            return False
+
+        memcheck = MemcheckServer(txn="MemCheck", type=0, salt=random.getrandbits(32))
+        packet = create_packet("fsys", FeslType.TAG_SINGLE_SERVER, 0, memcheck)
+
+        if packet:
+            logger.debug("Sending periodic MemCheck to %s", self.peername)
+            logger.debug("TX hex: %s", format_hex(packet))
+            self.transport.write(packet)
+            self.last_memcheck_time = time.time()
+            return True
+        return False
+
+
+# =============================================================================
+# Periodic MemCheck Sender
+# =============================================================================
+
+
+def memcheck_sender(loop: asyncio.AbstractEventLoop):
+    """
+    Periodic MemCheck sender thread.
+    Sends MemCheck to all connected FESL clients to keep sessions alive.
+    Similar to the IRC ping_sender pattern.
+    """
+    while True:
+        try:
+            time.sleep(MEMCHECK_INTERVAL)
+
+            logger.debug("Sending periodic MemCheck to all FESL clients...")
+
+            with fesl_clients_lock:
+                clients_to_remove: list[FeslServer] = []
+
+                for peername, client in list(fesl_clients.items()):
+                    try:
+                        # Send MemCheck using thread-safe method
+                        future = asyncio.run_coroutine_threadsafe(
+                            _send_memcheck_async(client), loop
+                        )
+
+                        try:
+                            success = future.result(timeout=5)
+                            if not success:
+                                logger.warning("Failed to send MemCheck to %s", peername)
+                                clients_to_remove.append(client)
+                        except TimeoutError:
+                            logger.warning("Timeout sending MemCheck to %s", peername)
+                            clients_to_remove.append(client)
+
+                    except Exception as e:
+                        logger.error("Error in memcheck loop for %s: %s", peername, e)
+
+                # Close connections for failed clients
+                for client in clients_to_remove:
+                    try:
+                        if client.transport and not client.transport.is_closing():
+                            client.transport.close()
+                    except Exception as e:
+                        logger.error("Error closing client connection: %s", e)
+
+        except Exception as e:
+            logger.error("Error in memcheck_sender: %s", e)
+            time.sleep(1)
+
+
+async def _send_memcheck_async(client: FeslServer) -> bool:
+    """Async wrapper to send MemCheck from the main event loop."""
+    return client.send_memcheck()
+
 
 # =============================================================================
 # Server Startup
@@ -278,4 +376,15 @@ async def start_fesl_server(host: str, port: int) -> asyncio.Server:
     loop = asyncio.get_running_loop()
     server = await loop.create_server(lambda: FeslServer(), host, port)
     logger.info("FESL server listening on %s:%d", host, port)
+
+    # Start the periodic MemCheck sender thread
+    memcheck_thread = threading.Thread(
+        target=memcheck_sender,
+        args=(loop,),
+        daemon=True,
+        name="FESL-MemCheck-Sender"
+    )
+    memcheck_thread.start()
+    logger.info("Started FESL MemCheck sender thread (interval: %ds)", MEMCHECK_INTERVAL)
+
     return server
