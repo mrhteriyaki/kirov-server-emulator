@@ -323,9 +323,7 @@ def memcheck_sender(loop: asyncio.AbstractEventLoop):
                 for peername, client in list(fesl_clients.items()):
                     try:
                         # Send MemCheck using thread-safe method
-                        future = asyncio.run_coroutine_threadsafe(
-                            _send_memcheck_async(client), loop
-                        )
+                        future = asyncio.run_coroutine_threadsafe(_send_memcheck_async(client), loop)
 
                         try:
                             success = future.result(timeout=5)
@@ -378,12 +376,7 @@ async def start_fesl_server(host: str, port: int) -> asyncio.Server:
     logger.info("FESL server listening on %s:%d", host, port)
 
     # Start the periodic MemCheck sender thread
-    memcheck_thread = threading.Thread(
-        target=memcheck_sender,
-        args=(loop,),
-        daemon=True,
-        name="FESL-MemCheck-Sender"
-    )
+    memcheck_thread = threading.Thread(target=memcheck_sender, args=(loop,), daemon=True, name="FESL-MemCheck-Sender")
     memcheck_thread.start()
     logger.info("Started FESL MemCheck sender thread (interval: %ds)", MEMCHECK_INTERVAL)
 
