@@ -271,6 +271,8 @@ class NatNegServer(asyncio.DatagramProtocol):
 
         # Send to host
         if 1 in session.host.connections:
+            conn = session.host.connections[1]
+            if use_lan_for_pt1:
                 packet = connect_lan_to_host
                 mode = "LAN"
                 peer_ip, peer_port = session.guest.local_ip, session.guest.local_port
@@ -279,7 +281,6 @@ class NatNegServer(asyncio.DatagramProtocol):
                 mode = "WAN"
                 peer_ip, peer_port = session.guest.public_ip, session.guest.public_port
             self._send_to(packet, (conn.public_ip, conn.public_port))
-            logger.debug(
             logger.info(
                 "CONNECT to HOST %s:%d (pt=1, %s) -> peer %s:%d",
                 conn.public_ip,
