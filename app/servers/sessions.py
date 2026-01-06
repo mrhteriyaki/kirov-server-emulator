@@ -146,6 +146,10 @@ class NatNegSessionManager:
         # Client endpoint -> (session_id, client_index) for reverse lookup
         self._client_endpoints: dict[ClientEndpoint, tuple[int, NatNegClientIndex]] = {}
 
+        # Host IP -> session count (for alternating LAN/WAN on port_type 1)
+        # Tracks how many sessions we've processed per host IP
+        self._host_session_counter: dict[str, int] = {}
+
         # Lock for thread safety
         self._lock = asyncio.Lock()
 
@@ -235,8 +239,18 @@ class NatNegSessionManager:
 
             # Check if session is ready (both clients have valid connections)
             if session.is_ready() and not session.connect_sent:
+                # Assign session order based on host IP
+                # This is used to alternate LAN/WAN on port_type 1
+                host_ip = session.host.public_ip
+                self._host_session_counter[host_ip] = self._host_session_counter.get(host_ip, 0) + 1
+                session.session_order = self._host_session_counter[host_ip]
+
                 logger.info(
-                    "Session %08X is ready! Both clients registered. Same LAN: %s", session_id, session.are_same_lan()
+                    "Session %08X is ready! Both clients registered. Same LAN: %s, session_order=%d for host %s",
+                    session_id,
+                    session.are_same_lan(),
+                    session.session_order,
+                    host_ip,
                 )
                 logger.info(
                     "Session %08X - Host best conn: %s:%d (local: %s:%d)",
