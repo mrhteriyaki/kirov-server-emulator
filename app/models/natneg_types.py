@@ -431,6 +431,10 @@ class NatNegSession:
     connect_sent: bool = False
     completed: bool = False
 
+    # Session order for this host IP (1st, 2nd, 3rd session, etc.)
+    # Used for alternating LAN/WAN on port_type 1
+    session_order: int = 0
+
     def is_ready(self) -> bool:
         """
         Check if both clients have registered and we can send CONNECT.
