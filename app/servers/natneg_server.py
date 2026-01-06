@@ -25,6 +25,7 @@ from app.util.natneg_protocol import (
     is_natneg_packet,
     parse_init_packet,
     parse_natneg_packet,
+    parse_report_packet,
 )
 
 logger = get_logger(__name__)
@@ -112,7 +113,7 @@ class NatNegServer(asyncio.DatagramProtocol):
         elif header.record_type == NatNegRecordType.CONNECT_ACK:
             asyncio.create_task(self._handle_connect_ack(header, addr))
         elif header.record_type == NatNegRecordType.REPORT:
-            asyncio.create_task(self._handle_report(header, addr))
+            asyncio.create_task(self._handle_report(header, data, addr))
         elif header.record_type == NatNegRecordType.CONNECT_PING:
             # This is P2P traffic, we just ignore it
             logger.debug("Received CONNECT_PING (P2P) from %s:%d", client_ip, client_port)
@@ -298,17 +299,33 @@ class NatNegServer(asyncio.DatagramProtocol):
 
         await self.session_manager.mark_connect_acked(session_id=header.session_id, client_index=header.client_index)
 
-    async def _handle_report(self, header: NatNegHeader, addr: tuple[str, int]):
+    async def _handle_report(self, header: NatNegHeader, data: bytes, addr: tuple[str, int]):
         """Handle REPORT packet from client."""
         client_ip, client_port = addr
 
-        logger.info(
-            "REPORT from %s:%d (session=%08X, index=%s)",
-            client_ip,
-            client_port,
-            header.session_id,
-            header.client_index.name,
-        )
+        # Parse full REPORT packet for detailed logging
+        report = parse_report_packet(data)
+        if report:
+            logger.info(
+                "REPORT from %s:%d - session=%08X, index=%s, port_type=%d, nat_type=%d, mapping=%d, game=%s",
+                client_ip,
+                client_port,
+                header.session_id,
+                header.client_index.name,
+                report.port_type,
+                report.nat_type,
+                report.mapping_scheme,
+                report.game_name,
+            )
+            logger.debug("REPORT raw: %s", format_hex(data))
+        else:
+            logger.info(
+                "REPORT from %s:%d (session=%08X, index=%s) - parse failed",
+                client_ip,
+                client_port,
+                header.session_id,
+                header.client_index.name,
+            )
 
         # Send REPORT_ACK
         ack_packet = build_report_ack_packet(
