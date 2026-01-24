@@ -62,8 +62,8 @@ class RelaySettings(BaseModel):
     host: str = Field(default="0.0.0.0")
     port_start: int = Field(default=50000, gt=1024, lt=65536)  # Start of port range
     port_end: int = Field(default=59999, gt=1024, lt=65536)  # End of port range
-    session_timeout: int = Field(default=120)  # Seconds of inactivity before cleanup
-    pair_ttl: int = Field(default=300)  # Seconds before pair attempt info expires (5 min)
+    session_timeout: int = Field(default=120)  # Seconds of inactivity before relay cleanup
+    pair_ttl: int = Field(default=60)  # Seconds before pair attempt tracking expires
     enabled: bool = Field(default=True)
 
 
