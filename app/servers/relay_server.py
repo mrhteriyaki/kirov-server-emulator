@@ -248,7 +248,7 @@ class RelayServer:
 
     def get_route_by_port(self, port: int) -> RelayRoute | None:
         """Get the route associated with a port."""
-        for route_key, route in self._routes.items():
+        for route in self._routes.values():
             if route.port_a == port or route.port_b == port:
                 return route
         return None
@@ -271,7 +271,7 @@ class RelayServer:
         stale_routes = []
 
         async with self._lock:
-            for route_key, route in self._routes.items():
+            for route in self._routes.values():
                 if route.is_stale(self.session_timeout):
                     stale_routes.append(route)
 

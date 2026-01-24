@@ -345,13 +345,12 @@ class NatNegServer(asyncio.DatagramProtocol):
 
         # Get relay server host (use the transport's local address)
         relay_host = self.relay_server.host
-        if relay_host == "0.0.0.0":
+        if relay_host == "0.0.0.0" and self.transport:
             # Use the natneg server's bound address as relay address
             # This assumes relay and natneg are on the same machine
-            if self.transport:
-                sockname = self.transport.get_extra_info("sockname")
-                if sockname and sockname[0] != "0.0.0.0":
-                    relay_host = sockname[0]
+            sockname = self.transport.get_extra_info("sockname")
+            if sockname and sockname[0] != "0.0.0.0":
+                relay_host = sockname[0]
 
         # If still 0.0.0.0, we need a proper public IP
         # For now, use the server's perspective of the connection

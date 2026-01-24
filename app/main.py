@@ -14,9 +14,9 @@ from app.servers.fesl_server import start_fesl_server
 from app.servers.gp_server import start_gp_server
 from app.servers.natneg_server import start_natneg_server
 from app.servers.peerchat_server import start_irc_server
-from app.servers.relay_server import start_relay_server
 from app.servers.query_master_tcp import start_master_server
 from app.servers.query_master_udp import start_heartbeat_server
+from app.servers.relay_server import start_relay_server
 from app.servers.sessions import SessionManager
 from app.soap.service import soap_router
 from app.util.logging_helper import setup_logging
