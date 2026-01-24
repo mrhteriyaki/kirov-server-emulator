@@ -89,6 +89,7 @@ This starts:
 | Peerchat IRC | 6667 | TCP | Lobby and chat |
 | GP Server | 29900 | TCP | Buddy system and presence |
 | NAT Negotiation | 27901 | UDP | P2P hole punching |
+| NAT Relay | 50000-59999 | UDP | Relay fallback when direct P2P fails (`relay.host` must be your public IP) |
 | Master Server | 28910 | TCP | Room/game list queries |
 | Heartbeat Server | 27900 | UDP | Game session registration |
 
@@ -112,6 +113,7 @@ Detailed protocol documentation is available in the `docs/` directory:
 | [GP_SERVER.md](docs/GP_SERVER.md) | GameSpy Presence protocol for buddy system and messaging |
 | [PEERCHAT.md](docs/PEERCHAT.md) | IRC-based lobby system with GameSpy extensions for game coordination |
 | [NATNEG.md](docs/NATNEG.md) | NAT negotiation protocol for establishing peer-to-peer connections |
+| [RELAY.md](docs/RELAY.md) | UDP relay fallback when direct P2P fails |
 | [MASTER_SERVER.md](docs/MASTER_SERVER.md) | Master server for game discovery and session registration |
 
 ## Architecture Overview
