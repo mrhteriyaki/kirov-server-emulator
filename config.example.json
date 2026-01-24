@@ -27,10 +27,10 @@
   "relay": {
     "host": "0.0.0.0",
     "port_start": 50000,
-    "port_end": 59999,
+    "port_end": 50999,
     "session_timeout": 120,
     "pair_ttl": 60,
-    "enabled": true
+    "enabled": false
   },
   "game": {
     "gamekey": "YOUR_GAME_KEY"
