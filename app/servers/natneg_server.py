@@ -370,19 +370,19 @@ class NatNegServer(asyncio.DatagramProtocol):
         )
 
         # Build CONNECT packets pointing to relay ports
-        # Host connects to port_a, told to reach guest at (relay_host, port_b)
-        # Guest connects to port_b, told to reach host at (relay_host, port_a)
+        # connect_to_guest (peer_port=port_a) instructs the guest to connect to relay_host:port_a to reach the host
+        # connect_to_host (peer_port=port_b) instructs the host to connect to relay_host:port_b to reach the guest
         connect_to_guest = build_connect_packet(
             session_id=session.session_id,
             peer_ip=relay_host,
-            peer_port=port_a,  # Guest will connect to port_a to reach host
+            peer_port=port_a,
             got_data=True,
             finished=True,
         )
         connect_to_host = build_connect_packet(
             session_id=session.session_id,
             peer_ip=relay_host,
-            peer_port=port_b,  # Host will connect to port_b to reach guest
+            peer_port=port_b,
             got_data=True,
             finished=True,
         )
@@ -526,17 +526,26 @@ class NatNegServer(asyncio.DatagramProtocol):
                 # Cleanup stale pair tracking entries
                 released_pairs = await self.session_manager.cleanup_stale_pairs(self.pair_ttl)
 
-                # Release relay routes for expired pairs
+                # Release relay routes for expired pairs only if the route is stale
                 if self.relay_server and released_pairs:
                     for host_ip, guest_ip, relay_ports in released_pairs:
                         route = self.relay_server.get_route_by_port(relay_ports[0])
                         if route:
-                            await self.relay_server.release_route(route)
-                            logger.info(
-                                "Released relay route for expired pair %s <-> %s",
-                                host_ip,
-                                guest_ip,
-                            )
+                            # Only release if the route is stale (no recent traffic)
+                            # Otherwise let RelayServer's own traffic-based timeout handle it
+                            if route.is_stale(self.relay_server.session_timeout):
+                                await self.relay_server.release_route(route)
+                                logger.info(
+                                    "Released relay route for expired pair %s <-> %s",
+                                    host_ip,
+                                    guest_ip,
+                                )
+                            else:
+                                logger.debug(
+                                    "Skipping relay route release for pair %s <-> %s - route still active",
+                                    host_ip,
+                                    guest_ip,
+                                )
         except asyncio.CancelledError:
             pass
 

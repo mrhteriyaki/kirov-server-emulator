@@ -196,13 +196,24 @@ class RelayServer:
             route_key = (min(port_a, port_b), max(port_a, port_b))
             self._routes[route_key] = route
 
+            # Track which listeners have been started for cleanup on failure
+            started_ports: list[int] = []
+
             # Start listeners for both ports
             try:
                 await self._start_port_listener(port_a, port_b)
+                started_ports.append(port_a)
                 await self._start_port_listener(port_b, port_a)
+                started_ports.append(port_b)
             except OSError as e:
                 logger.error("Failed to start relay listeners: %s", e)
-                # Cleanup on failure
+                # Cleanup any listeners that were started before the failure
+                for port in started_ports:
+                    transport = self._transports.pop(port, None)
+                    if transport:
+                        transport.close()
+                    self._protocols.pop(port, None)
+                # Release ports and remove route
                 await self.port_pool.release_pair(ports)
                 self._routes.pop(route_key, None)
                 return None
@@ -210,8 +221,13 @@ class RelayServer:
             logger.info("Allocated relay route: ports %d <-> %d", port_a, port_b)
             return route
 
-    async def _start_port_listener(self, port: int, peer_port: int):
-        """Start a UDP listener on the specified port."""
+    async def _start_port_listener(self, port: int, peer_port: int) -> asyncio.DatagramTransport:
+        """
+        Start a UDP listener on the specified port.
+
+        Returns:
+            The transport for the started listener.
+        """
         loop = asyncio.get_running_loop()
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: RelayPortProtocol(self, port, peer_port),
@@ -219,6 +235,7 @@ class RelayServer:
         )
         self._transports[port] = transport
         self._protocols[port] = protocol
+        return transport
 
     async def release_route(self, route: RelayRoute):
         """Release a relay route and its ports."""
