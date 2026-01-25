@@ -433,9 +433,7 @@ class NatNegSessionManager:
                     ports[1],
                 )
 
-    async def allocate_pair_relay_if_missing(
-        self, host_ip: str, guest_ip: str, relay_server
-    ) -> tuple[int, int] | None:
+    async def allocate_pair_relay_if_missing(self, host_ip: str, guest_ip: str, relay_server) -> tuple[int, int] | None:
         """
         Atomically check and allocate relay ports for a host-guest pair.
 
