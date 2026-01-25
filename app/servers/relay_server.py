@@ -126,7 +126,7 @@ class RelayPortProtocol(asyncio.DatagramProtocol):
                 )
         else:
             logger.debug(
-                "Relay port %d: buffering packet, peer not yet registered",
+                "Relay port %d: dropping packet, peer not yet registered",
                 self.port,
             )
 
