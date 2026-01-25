@@ -15,6 +15,7 @@
   "natneg": {
     "host": "0.0.0.0",
     "port": 27901,
+    "session_timeout": 30,
     "enabled": true
   },
   "master": {
@@ -22,6 +23,14 @@
     "port": 28910,
     "udp_port": 27900,
     "enabled": true
+  },
+  "relay": {
+    "host": "0.0.0.0",
+    "port_start": 50000,
+    "port_end": 50999,
+    "session_timeout": 120,
+    "pair_ttl": 60,
+    "enabled": false
   },
   "game": {
     "gamekey": "YOUR_GAME_KEY"
