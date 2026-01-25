@@ -301,3 +301,143 @@ class GameInvite(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     expires_at: datetime = Field(default_factory=lambda: datetime.utcnow() + timedelta(minutes=5))
+
+
+# =============================================================================
+# Game Stats Models
+# =============================================================================
+
+
+class PlayerStats(SQLModel, table=True):
+    """
+    Player Stats - Career statistics by game type.
+
+    Stores wins, losses, disconnects, desyncs, and other stats
+    for each game type (unranked, ranked 1v1, ranked 2v2, clan 1v1, clan 2v2).
+    """
+
+    __tablename__ = "player_stats"
+
+    id: int | None = Field(default=None, primary_key=True)
+    persona_id: int = Field(foreign_key="persona.id", unique=True, index=True)
+
+    # Wins per game type
+    wins_unranked: int = Field(default=0)
+    wins_ranked_1v1: int = Field(default=0)
+    wins_ranked_2v2: int = Field(default=0)
+    wins_clan_1v1: int = Field(default=0)
+    wins_clan_2v2: int = Field(default=0)
+
+    # Losses per game type
+    losses_unranked: int = Field(default=0)
+    losses_ranked_1v1: int = Field(default=0)
+    losses_ranked_2v2: int = Field(default=0)
+    losses_clan_1v1: int = Field(default=0)
+    losses_clan_2v2: int = Field(default=0)
+
+    # Disconnects per game type
+    disconnects_unranked: int = Field(default=0)
+    disconnects_ranked_1v1: int = Field(default=0)
+    disconnects_ranked_2v2: int = Field(default=0)
+    disconnects_clan_1v1: int = Field(default=0)
+    disconnects_clan_2v2: int = Field(default=0)
+
+    # Desyncs per game type
+    desyncs_unranked: int = Field(default=0)
+    desyncs_ranked_1v1: int = Field(default=0)
+    desyncs_ranked_2v2: int = Field(default=0)
+    desyncs_clan_1v1: int = Field(default=0)
+    desyncs_clan_2v2: int = Field(default=0)
+
+    # Average game length (seconds) per game type
+    avg_game_length_unranked: int = Field(default=0)
+    avg_game_length_ranked_1v1: int = Field(default=0)
+    avg_game_length_ranked_2v2: int = Field(default=0)
+    avg_game_length_clan_1v1: int = Field(default=0)
+    avg_game_length_clan_2v2: int = Field(default=0)
+
+    # Win/loss ratio per game type (stored as percentage * 100, e.g., 50.5% = 5050)
+    win_ratio_unranked: float = Field(default=0.0)
+    win_ratio_ranked_1v1: float = Field(default=0.0)
+    win_ratio_ranked_2v2: float = Field(default=0.0)
+    win_ratio_clan_1v1: float = Field(default=0.0)
+    win_ratio_clan_2v2: float = Field(default=0.0)
+
+    total_matches_online: int = Field(default=0)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PlayerLevel(SQLModel, table=True):
+    """
+    Player Level - Rank and XP score for a player.
+
+    Rank ranges from 1-87, with score representing XP points earned.
+    """
+
+    __tablename__ = "player_level"
+
+    id: int | None = Field(default=None, primary_key=True)
+    persona_id: int = Field(foreign_key="persona.id", unique=True, index=True)
+    rank: int = Field(default=1)  # 1-87
+    score: int = Field(default=0)  # XP points
+
+
+class MatchReport(SQLModel, table=True):
+    """
+    Match Report - Individual match record from Competition service.
+
+    Records game outcome data for statistics tracking.
+    """
+
+    __tablename__ = "match_report"
+
+    id: int | None = Field(default=None, primary_key=True)
+    csid: str = Field(index=True)  # Competition Session ID
+    ccid: str = Field(index=True)  # Competition Channel ID (player identifier)
+    persona_id: int = Field(foreign_key="persona.id", index=True)
+    submitted_by: str = Field(default="")  # Who submitted this report
+
+    # Match data
+    result: int = Field(default=0)  # 0=Win, 1=Loss, 3=DC
+    faction: str = Field(default="")  # Empire, Soviet, etc.
+    duration: int = Field(default=0)  # Seconds
+    gametype: int = Field(default=0)  # 0=Unranked, 1=Ranked1v1, 2=Ranked2v2, 3=Clan1v1, 4=Clan2v2
+    map_name: str = Field(default="")
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CompetitionSession(SQLModel, table=True):
+    """
+    Competition Session - Match session tracking for Competition service.
+
+    Created when a match starts and tracks the session state.
+    """
+
+    __tablename__ = "competition_session"
+
+    id: int | None = Field(default=None, primary_key=True)
+    csid: str = Field(unique=True, index=True)  # Competition Session ID
+    ccid: str = Field(index=True)  # Competition Channel ID
+    host_persona_id: int = Field(foreign_key="persona.id")
+    status: str = Field(default="active")  # active, completed
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AuthCertificate(SQLModel, table=True):
+    """
+    Auth Certificate - Certificate pool for RA3 authentication.
+
+    Certificates are allocated from a pool and returned after use.
+    Each certificate has a 180-second expiry.
+    """
+
+    __tablename__ = "auth_certificate"
+
+    id: int | None = Field(default=None, primary_key=True)
+    certificate_data: str = Field()  # Full certificate data
+    server_data_10: str = Field(index=True)  # First 10 chars of ServerData for lookup
+    in_use: bool = Field(default=False)
+    persona_id: int | None = Field(default=None)
+    assigned_at: datetime | None = Field(default=None)

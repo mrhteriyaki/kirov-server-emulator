@@ -11,6 +11,7 @@ from app.config.app_settings import app_config
 from app.db.database import create_db_and_tables
 from app.rest.routes import router as rest_router
 from app.servers.fesl_server import start_fesl_server
+from app.servers.gamestats_server import start_gamestats_server
 from app.servers.gp_server import start_gp_server
 from app.servers.natneg_server import start_natneg_server
 from app.servers.peerchat_server import start_irc_server
@@ -18,6 +19,10 @@ from app.servers.query_master_tcp import start_master_server
 from app.servers.query_master_udp import start_heartbeat_server
 from app.servers.relay_server import start_relay_server
 from app.servers.sessions import SessionManager
+from app.soap.auth_service import auth_router
+from app.soap.clan_service import clan_router
+from app.soap.competition_service import competition_router
+from app.soap.sake_service import sake_router
 from app.soap.service import soap_router
 from app.util.logging_helper import setup_logging
 from app.util.paths import get_base_path
@@ -108,6 +113,15 @@ async def lifespan(app: FastAPI):
         heartbeat_transport, heartbeat_protocol = await start_heartbeat_server(host=master_host, port=master_udp_port)
         print(f"INFO:     Heartbeat Server (UDP) is listening on {master_host}:{master_udp_port}")
 
+    # Start GameStats server (game statistics protocol)
+    gamestats_server = None
+    if app_config.gamestats.enabled:
+        gamestats_host = app_config.gamestats.host
+        gamestats_port = app_config.gamestats.port
+        print(f"INFO:     Starting GameStats server on {gamestats_host}:{gamestats_port}...")
+        gamestats_server = await start_gamestats_server(gamestats_host, gamestats_port)
+        print(f"INFO:     GameStats server is listening on {gamestats_host}:{gamestats_port}")
+
     yield
 
     # Shutdown - consistent pattern for all servers
@@ -115,6 +129,8 @@ async def lifespan(app: FastAPI):
     servers = [fesl_server, irc_server, gp_server]
     if master_server:
         servers.append(master_server)
+    if gamestats_server:
+        servers.append(gamestats_server)
     for server in servers:
         server.close()
     await asyncio.gather(*[s.wait_closed() for s in servers])
@@ -143,6 +159,18 @@ app.include_router(rest_router, prefix="/api/rest")
 
 # Mount the SOAP router (native FastAPI integration)
 app.include_router(soap_router)
+
+# Mount the Sake Storage Server SOAP router
+app.include_router(sake_router)
+
+# Mount the Competition SOAP router
+app.include_router(competition_router)
+
+# Mount the Auth SOAP router
+app.include_router(auth_router)
+
+# Mount the Clan/Ladder stub router
+app.include_router(clan_router)
 
 
 @app.get("/health")

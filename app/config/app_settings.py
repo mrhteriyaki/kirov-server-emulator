@@ -67,6 +67,14 @@ class RelaySettings(BaseModel):
     enabled: bool = Field(default=True)
 
 
+class GameStatsSettings(BaseModel):
+    """GameStats server settings for game statistics protocol."""
+
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=29920, gt=1024, lt=65536)
+    enabled: bool = Field(default=True)
+
+
 # Compute config path at module load time for frozen executable support
 _config_path = os.path.join(get_runtime_path(), "config.json")
 
@@ -78,6 +86,7 @@ class AppSettings(BaseSettings):
     natneg: NatNegSettings = Field(default_factory=NatNegSettings)
     master: MasterServerSettings = Field(default_factory=MasterServerSettings)
     relay: RelaySettings = Field(default_factory=RelaySettings)
+    gamestats: GameStatsSettings = Field(default_factory=GameStatsSettings)
     game: GameSettings = Field()
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
