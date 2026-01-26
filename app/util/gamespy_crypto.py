@@ -9,6 +9,11 @@ Key details:
 - MD5 hash over binary-encoded certificate fields (integers as 4-byte little-endian)
 - PKCS#1 v1.5 padded RSA signing
 - Exponent always "010001" (65537)
+
+Certificate Signing:
+The game client verifies certificate signatures using a hardcoded public key
+(WS_AUTHSERVICE_SIGNATURE_KEY in the SDK). We use our own server signing keypair
+and the game must be patched to use our public key modulus.
 """
 
 import hashlib
@@ -18,6 +23,23 @@ from dataclasses import dataclass
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+
+# Server signing key (1024-bit RSA)
+# Used to sign certificates - game clients verify with this public key.
+# The game must be patched to use SERVER_SIGNING_MODULUS as the verification key.
+SERVER_SIGNING_MODULUS = (
+    "E3F9BE6DE690AE4DB87F9A2386472F0248FB10625940CE592B3D12F311E19A2A"
+    "211D1F5B7C5D3C0EA064FEC77163FC7AD532836DA56B040B1E378ED472DC7DBC"
+    "C479C95DBC9ABE974AA409C4CEC99C9301BD18E928AF7F16CC38C44E504D3C91"
+    "35FAE78247D7A046762D6ABE917A31759D0D685C81EA114DBD56815174BC3F67"
+)
+SERVER_SIGNING_PRIVATE = (
+    "D5D6AFE1E470779EDD5D8B96A0E06A5EC957FE6151F8F0D541329370BEA80FF4"
+    "4E8543A18BC0E4918FAFCC3005D354C35EF177C8446E62278F9B6B75299C5AAF"
+    "0CFB26BF51B346547A49B3C976C9D19E1CE005D30801493A33136A85A45D3DD6"
+    "1ACB7A843381DA285B4278E0F675F6B1F13D11D41476466C9707F57177BA3D81"
+)
+SERVER_SIGNING_EXPONENT = "010001"  # 65537
 
 
 @dataclass
@@ -240,20 +262,21 @@ def generate_certificate_signature(
     peerkeymodulus: str,
     peerkeyexponent: str,
     serverdata: str,
-    peerkeyprivate: str,
 ) -> str:
     """
     Generate a complete certificate signature.
 
-    Computes MD5 hash over all certificate fields and signs with RSA.
+    Computes MD5 hash over all certificate fields and signs with the SERVER signing key.
+    The game client verifies this signature using the hardcoded public key, so the game
+    must be patched to use SERVER_SIGNING_MODULUS for verification.
 
     Args:
-        All certificate fields plus the private key.
+        All certificate fields (peer key is included in hash but NOT used for signing).
 
     Returns:
         256-character uppercase hex signature string.
     """
-    # Compute hash over certificate fields
+    # Compute hash over certificate fields (includes peer key in the hash)
     cert_hash = compute_certificate_hash(
         length=length,
         version=version,
@@ -270,8 +293,10 @@ def generate_certificate_signature(
         serverdata=serverdata,
     )
 
-    # Sign the hash with PKCS#1 v1.5 padding (per GameSpy SDK gsCryptRSASignHash)
-    return rsa_sign_pkcs1v15(cert_hash, peerkeyprivate, peerkeymodulus)
+    # Sign with SERVER signing key (not peer key!)
+    # Client verifies using WS_AUTHSERVICE_SIGNATURE_KEY which must be patched
+    # to match SERVER_SIGNING_MODULUS
+    return rsa_sign_pkcs1v15(cert_hash, SERVER_SIGNING_PRIVATE, SERVER_SIGNING_MODULUS)
 
 
 @dataclass
@@ -324,7 +349,7 @@ def generate_certificate_for_player(
     # Generate random serverdata
     serverdata = generate_serverdata()
 
-    # Compute signature over all fields
+    # Compute signature over all fields (signed with server key, not peer key)
     signature = generate_certificate_signature(
         length=length,
         version=version,
@@ -339,7 +364,6 @@ def generate_certificate_for_player(
         peerkeymodulus=keypair.modulus,
         peerkeyexponent=keypair.exponent,
         serverdata=serverdata,
-        peerkeyprivate=keypair.private_key,
     )
 
     return GeneratedCertificate(

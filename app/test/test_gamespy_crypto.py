@@ -15,6 +15,8 @@ import pytest
 
 from app.util.gamespy_crypto import (
     MD5_DIGESTINFO,
+    SERVER_SIGNING_EXPONENT,
+    SERVER_SIGNING_MODULUS,
     compute_certificate_hash,
     generate_certificate_for_player,
     generate_rsa_keypair,
@@ -223,7 +225,7 @@ class TestGenerateCertificateForPlayer:
     """Integration test for full certificate generation."""
 
     def test_generated_certificate_has_valid_signature(self):
-        """Verify generated certificate signature validates correctly."""
+        """Verify generated certificate signature validates with SERVER key."""
         cert = generate_certificate_for_player(
             userid=12345,
             profileid=67890,
@@ -248,10 +250,11 @@ class TestGenerateCertificateForPlayer:
             serverdata=cert.serverdata,
         )
 
-        # Decrypt signature with public key
+        # Decrypt signature with SERVER public key (not peer key!)
+        # This simulates what the game client does with WS_AUTHSERVICE_SIGNATURE_KEY
         sig_int = int(cert.signature, 16)
-        e = int(cert.peerkeyexponent, 16)
-        n = int(cert.peerkeymodulus, 16)
+        e = int(SERVER_SIGNING_EXPONENT, 16)
+        n = int(SERVER_SIGNING_MODULUS, 16)
         decrypted = pow(sig_int, e, n).to_bytes(128, byteorder="big")
 
         # Extract hash from decrypted padding
