@@ -1,8 +1,46 @@
 import struct
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import IntEnum, Enum
 from typing import Any
+
+
+class FeslError(IntEnum):
+    """
+    FESL error codes based on OpenSpy implementation.
+    See: https://github.com/openspy/openspy-core/blob/master/code/FESL/server/FESLPeer.h
+    """
+
+    NO_ERROR = 0
+    NOT_AUTHENTICATED = 20  # User not authenticated yet
+    CUSTOM = 21
+    SYSTEM_ERROR = 99
+    ACCOUNT_NOT_FOUND = 101
+    ACCOUNT_DISABLED = 102
+    ACCOUNT_BANNED = 103
+    ACCOUNT_NOT_CONFIRMED = 105
+    TOO_MANY_LOGIN_ATTEMPTS = 121
+    AUTH_FAILURE = 122  # Password mismatch
+    GAME_NOT_REGISTERED = 123
+    ACCOUNT_EXISTS = 160
+
+
+@dataclass
+class FeslErrorResponse:
+    """
+    FESL error response model.
+    Sent when a command fails (e.g., authentication failure).
+    """
+
+    txn: str
+    errorCode: FeslError
+    errorContainer: str = "[]"
+
+    def to_key_value_string(self) -> str:
+        output_lines = [f"TXN={self.txn}"]
+        output_lines.append(f"errorContainer={self.errorContainer}")
+        output_lines.append(f"errorCode={self.errorCode.value}")
+        return "\n".join(output_lines)
 
 
 @dataclass

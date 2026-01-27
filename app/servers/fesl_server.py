@@ -13,6 +13,7 @@ import time
 
 from app.models.fesl_types import (
     FeslBaseModel,
+    FeslErrorResponse,
     FeslHeader,
     FeslType,
     GameSpyPreAuthClient,
@@ -98,17 +99,17 @@ def get_model_for_txn(data_dict: dict, header: FeslHeader):
     return data_dict
 
 
-def _model_to_string(model: FeslBaseModel) -> str:
+def _model_to_string(model: FeslBaseModel | FeslErrorResponse) -> str:
     """Serializes a data model to its key-value string representation."""
     logger.debug("_model_to_string: %s", model)
-    if not isinstance(model, FeslBaseModel):
-        raise TypeError("data_model must be an instance of a BaseModel subclass")
+    if not isinstance(model, (FeslBaseModel, FeslErrorResponse)):
+        raise TypeError("data_model must be an instance of a BaseModel or FeslErrorResponse subclass")
 
     return model.to_key_value_string()
 
 
 def create_packet(
-    fesl_command: str, fesl_type: FeslType, packet_number: int, data_model: FeslBaseModel
+    fesl_command: str, fesl_type: FeslType, packet_number: int, data_model: FeslBaseModel | FeslErrorResponse
 ) -> bytearray | None:
     """
     Generates a complete FESL packet byte array from provided data.

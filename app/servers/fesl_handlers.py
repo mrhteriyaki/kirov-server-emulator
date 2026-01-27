@@ -26,6 +26,8 @@ from app.models.fesl_types import (
     DomainPartition,
     EntitledGameFeatureWrapper,
     FeslBaseModel,
+    FeslError,
+    FeslErrorResponse,
     FeslHeader,
     GameSpyPreAuthClient,
     GameSpyPreAuthServer,
@@ -94,7 +96,7 @@ class FeslHandlers:
     # ==========================================================================
 
     @staticmethod
-    def handle_login(model_data: NuLoginClient) -> NuLoginServer | None:
+    def handle_login(model_data: NuLoginClient) -> NuLoginServer | FeslErrorResponse:
         """
         Handle NuLogin - Initial user authentication.
 
@@ -128,7 +130,7 @@ class FeslHandlers:
 
         if not user:
             logger.debug("Authentication failed for nuid: %s", model_data.nuid)
-            return None
+            return FeslErrorResponse(txn="NuLogin", errorCode=FeslError.AUTH_FAILURE)
 
         # Update MAC address if provided
         if model_data.macAddr:
@@ -181,7 +183,7 @@ class FeslHandlers:
         return response
 
     @staticmethod
-    def handle_get_personas(model_data: NuGetPersonasClient) -> NuGetPersonasServer | None:
+    def handle_get_personas(model_data: NuGetPersonasClient) -> NuGetPersonasServer | FeslErrorResponse:
         """
         Handle NuGetPersonas - Get list of personas for the logged-in user.
 
@@ -198,7 +200,7 @@ class FeslHandlers:
 
         if not user:
             logger.debug("NuGetPersonas: No user in context")
-            return None
+            return FeslErrorResponse(txn="NuGetPersonas", errorCode=FeslError.NOT_AUTHENTICATED)
 
         db_session = next(get_session())
         personas = get_personas_for_user(db_session, user.id)
@@ -211,7 +213,7 @@ class FeslHandlers:
         return response
 
     @staticmethod
-    def handle_add_persona(model_data: NuAddPersonaClient) -> NuAddPersonaServer | None:
+    def handle_add_persona(model_data: NuAddPersonaClient) -> NuAddPersonaServer | FeslErrorResponse:
         """
         Handle NuAddPersona - Add a new persona for the logged-in user.
 
@@ -228,7 +230,7 @@ class FeslHandlers:
 
         if not user:
             logger.debug("NuAddPersona: No user in context")
-            return None
+            return FeslErrorResponse(txn="NuAddPersona", errorCode=FeslError.NOT_AUTHENTICATED)
 
         db_session = next(get_session())
 
@@ -236,7 +238,7 @@ class FeslHandlers:
         existing_persona = get_persona_by_name(db_session, model_data.name)
         if existing_persona:
             logger.debug("NuAddPersona: Persona name already taken: %s", model_data.name)
-            return None
+            return FeslErrorResponse(txn="NuAddPersona", errorCode=FeslError.ACCOUNT_EXISTS)
 
         # Create the new persona
         persona = create_persona_for_user(db_session, user, model_data.name)
@@ -249,7 +251,7 @@ class FeslHandlers:
         return response
 
     @staticmethod
-    def handle_login_persona(model_data: NuLoginPersonaClient) -> NuLoginPersonaServer | None:
+    def handle_login_persona(model_data: NuLoginPersonaClient) -> NuLoginPersonaServer | FeslErrorResponse:
         """
         Handle NuLoginPersona - Select a persona to play as.
 
@@ -272,7 +274,7 @@ class FeslHandlers:
 
         if not user:
             logger.debug("NuLoginPersona: No user in context")
-            return None
+            return FeslErrorResponse(txn="NuLoginPersona", errorCode=FeslError.NOT_AUTHENTICATED)
 
         db_session = next(get_session())
 
@@ -281,19 +283,19 @@ class FeslHandlers:
 
         if not persona:
             logger.debug("Persona not found: %s", model_data.name)
-            return None
+            return FeslErrorResponse(txn="NuLoginPersona", errorCode=FeslError.ACCOUNT_NOT_FOUND)
 
         # Verify persona belongs to this user
         if persona.user_id != user.id:
             logger.debug("Persona %s does not belong to user %s", model_data.name, user.id)
-            return None
+            return FeslErrorResponse(txn="NuLoginPersona", errorCode=FeslError.AUTH_FAILURE)
 
         # Update FESL session with persona (generates new lkey)
         fesl_session = update_fesl_session_persona(db_session, current_lkey, persona.id)
 
         if not fesl_session:
             logger.debug("Failed to update FESL session")
-            return None
+            return FeslErrorResponse(txn="NuLoginPersona", errorCode=FeslError.SYSTEM_ERROR)
 
         # Update context
         client_data["persona"] = persona
@@ -308,7 +310,7 @@ class FeslHandlers:
         return response
 
     @staticmethod
-    def handle_gamespy_pre_auth(model_data: GameSpyPreAuthClient) -> GameSpyPreAuthServer | None:
+    def handle_gamespy_pre_auth(model_data: GameSpyPreAuthClient) -> GameSpyPreAuthServer | FeslErrorResponse:
         """
         Handle GameSpyPreAuth - Generate ticket for GPServer handshake.
 
@@ -332,11 +334,11 @@ class FeslHandlers:
 
         if not user:
             logger.debug("GameSpyPreAuth: No user in context")
-            return None
+            return FeslErrorResponse(txn="GameSpyPreAuth", errorCode=FeslError.NOT_AUTHENTICATED)
 
         if not persona:
             logger.debug("GameSpyPreAuth: No persona in context (must call NuLoginPersona first)")
-            return None
+            return FeslErrorResponse(txn="GameSpyPreAuth", errorCode=FeslError.NOT_AUTHENTICATED)
 
         db_session = next(get_session())
 

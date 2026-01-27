@@ -356,8 +356,8 @@ class TestFeslHandlersIntegration:
         assert response.entitledGameFeatureWrappers[0].gameFeatureId == 6014
 
     def test_nulogin_wrong_password(self):
-        """Test that NuLogin handler rejects wrong password."""
-        from app.models.fesl_types import NuLoginClient, client_data_var
+        """Test that NuLogin handler rejects wrong password with AUTH_FAILURE error."""
+        from app.models.fesl_types import FeslError, FeslErrorResponse, NuLoginClient, client_data_var
         from app.servers.fesl_handlers import FeslHandlers
 
         with self.get_session() as session:
@@ -372,7 +372,9 @@ class TestFeslHandlersIntegration:
 
         response = FeslHandlers.handle_login(login_request)
 
-        assert response is None
+        assert isinstance(response, FeslErrorResponse)
+        assert response.txn == "NuLogin"
+        assert response.errorCode == FeslError.AUTH_FAILURE
 
     def test_nugetpersonas_handler_flow(self):
         """Test NuGetPersonas handler returns correct personas."""
