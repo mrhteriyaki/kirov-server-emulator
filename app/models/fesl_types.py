@@ -1,7 +1,7 @@
 import struct
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from enum import IntEnum, Enum
+from enum import Enum, IntEnum
 from typing import Any
 
 
