@@ -330,3 +330,50 @@ def create_encoder(gamekey: str, validate: bytes) -> EncTypeX:
         Configured EncTypeX encoder instance
     """
     return EncTypeX(key=gamekey, validate=validate)
+
+
+# =============================================================================
+# GameStats Cipher Functions
+# =============================================================================
+
+
+def gs_xor(data: str | bytes) -> bytes:
+    """
+    XOR cipher with 'GameSpy3D' key for GameStats protocol.
+
+    This is used to encrypt/decrypt messages in the GameStats protocol.
+    The cipher is symmetric - applying it twice returns the original data.
+
+    Args:
+        data: The data to encrypt/decrypt (string or bytes)
+
+    Returns:
+        XOR'd bytes
+    """
+    key = b"GameSpy3D"
+    if isinstance(data, str):
+        data = data.encode("latin-1")
+    return bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
+
+
+def gs_chresp_num(challenge: str) -> int:
+    """
+    Calculate challenge-response number for GameStats auth.
+
+    This generates a numeric value from the server challenge that is used
+    in the authentication hash calculation.
+
+    Args:
+        challenge: The challenge string from the server
+
+    Returns:
+        A 32-bit signed integer challenge-response value
+    """
+    import ctypes
+
+    num = ctypes.c_int32(0)
+    for char in challenge:
+        # Multiply and subtract with 32-bit overflow behavior
+        product = ctypes.c_int32(num.value * 0x63306CE7)
+        num = ctypes.c_int32(ord(char) - product.value)
+    return num.value

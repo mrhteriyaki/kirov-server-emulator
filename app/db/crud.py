@@ -7,14 +7,19 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from app.models.models import (
+    AuthCertificate,
     BuddyRequest,
+    CompetitionSession,
     FeslSession,
     Friend,
     GameEntitlement,
     GameInvite,
     GameSpyPreAuthTicket,
     GameSpySession,
+    MatchReport,
     Persona,
+    PlayerLevel,
+    PlayerStats,
     User,
     UserCreate,
 )
@@ -588,3 +593,246 @@ def get_pending_invites_for_persona(session: Session, persona_id: int) -> list[G
         GameInvite.expires_at > datetime.utcnow(),
     )
     return list(session.exec(stmt).all())
+
+
+# =============================================================================
+# Player Stats Operations
+# =============================================================================
+
+
+def get_player_stats(session: Session, persona_id: int) -> PlayerStats | None:
+    """Gets player stats for a persona."""
+    stmt = select(PlayerStats).where(PlayerStats.persona_id == persona_id)
+    return session.exec(stmt).first()
+
+
+def create_or_update_player_stats(session: Session, persona_id: int, stats_data: dict) -> PlayerStats:
+    """
+    Creates or updates player stats for a persona.
+
+    Args:
+        session: Database session
+        persona_id: Persona ID
+        stats_data: Dictionary of stats fields to update
+
+    Returns:
+        Updated or created PlayerStats
+    """
+    stats = get_player_stats(session, persona_id)
+
+    if stats is None:
+        stats = PlayerStats(persona_id=persona_id)
+        session.add(stats)
+
+    # Update fields from stats_data
+    for field, value in stats_data.items():
+        if hasattr(stats, field):
+            setattr(stats, field, value)
+
+    stats.updated_at = datetime.utcnow()
+    session.commit()
+    session.refresh(stats)
+    return stats
+
+
+def get_player_level(session: Session, persona_id: int) -> PlayerLevel | None:
+    """Gets player level for a persona."""
+    stmt = select(PlayerLevel).where(PlayerLevel.persona_id == persona_id)
+    return session.exec(stmt).first()
+
+
+def create_or_update_player_level(session: Session, persona_id: int, rank: int = 1, score: int = 0) -> PlayerLevel:
+    """
+    Creates or updates player level for a persona.
+
+    Args:
+        session: Database session
+        persona_id: Persona ID
+        rank: Player rank (1-87)
+        score: XP score
+
+    Returns:
+        Updated or created PlayerLevel
+    """
+    level = get_player_level(session, persona_id)
+
+    if level is None:
+        level = PlayerLevel(persona_id=persona_id, rank=rank, score=score)
+        session.add(level)
+    else:
+        level.rank = rank
+        level.score = score
+
+    session.commit()
+    session.refresh(level)
+    return level
+
+
+# =============================================================================
+# Competition Session Operations
+# =============================================================================
+
+
+def generate_csid() -> str:
+    """Generates a unique Competition Session ID."""
+    return secrets.token_urlsafe(16)
+
+
+def generate_ccid() -> str:
+    """Generates a unique Competition Channel ID."""
+    return secrets.token_urlsafe(12)
+
+
+def create_competition_session(session: Session, host_persona_id: int) -> CompetitionSession:
+    """
+    Creates a new competition session.
+
+    Args:
+        session: Database session
+        host_persona_id: Persona ID of the match host
+
+    Returns:
+        New CompetitionSession with csid and ccid
+    """
+    csid = generate_csid()
+    ccid = generate_ccid()
+
+    comp_session = CompetitionSession(
+        csid=csid,
+        ccid=ccid,
+        host_persona_id=host_persona_id,
+        status="active",
+    )
+
+    session.add(comp_session)
+    session.commit()
+    session.refresh(comp_session)
+    return comp_session
+
+
+def get_competition_session(session: Session, csid: str) -> CompetitionSession | None:
+    """Gets a competition session by csid."""
+    stmt = select(CompetitionSession).where(CompetitionSession.csid == csid)
+    return session.exec(stmt).first()
+
+
+def set_report_intention(session: Session, csid: str, persona_id: int) -> bool:
+    """
+    Signals that a player intends to submit a match report.
+
+    Args:
+        session: Database session
+        csid: Competition Session ID
+        persona_id: Persona ID
+
+    Returns:
+        True if successful
+    """
+    # For now, just verify the session exists
+    comp_session = get_competition_session(session, csid)
+    return comp_session is not None
+
+
+def submit_match_report(
+    session: Session,
+    csid: str,
+    ccid: str,
+    persona_id: int,
+    report_data: dict,
+) -> MatchReport:
+    """
+    Submits a match report.
+
+    Args:
+        session: Database session
+        csid: Competition Session ID
+        ccid: Competition Channel ID
+        persona_id: Persona ID of reporter
+        report_data: Match report data (result, faction, duration, gametype, map_name)
+
+    Returns:
+        Created MatchReport
+    """
+    report = MatchReport(
+        csid=csid,
+        ccid=ccid,
+        persona_id=persona_id,
+        submitted_by=str(persona_id),
+        result=report_data.get("result", 0),
+        faction=report_data.get("faction", ""),
+        duration=report_data.get("duration", 0),
+        gametype=report_data.get("gametype", 0),
+        map_name=report_data.get("map_name", ""),
+    )
+
+    session.add(report)
+    session.commit()
+    session.refresh(report)
+    return report
+
+
+def complete_competition_session(session: Session, csid: str) -> bool:
+    """Marks a competition session as completed."""
+    comp_session = get_competition_session(session, csid)
+    if comp_session:
+        comp_session.status = "completed"
+        session.add(comp_session)
+        session.commit()
+        return True
+    return False
+
+
+# =============================================================================
+# Auth Certificate Operations
+# =============================================================================
+
+
+def get_available_certificate(session: Session) -> AuthCertificate | None:
+    """
+    Gets an available certificate from the pool.
+
+    Returns the first unused certificate and marks it as in use.
+    """
+    stmt = select(AuthCertificate).where(AuthCertificate.in_use == False)
+    cert = session.exec(stmt).first()
+
+    if cert:
+        cert.in_use = True
+        cert.assigned_at = datetime.utcnow()
+        session.add(cert)
+        session.commit()
+        session.refresh(cert)
+
+    return cert
+
+
+def assign_certificate_to_persona(session: Session, cert_id: int, persona_id: int) -> AuthCertificate | None:
+    """Assigns a certificate to a specific persona."""
+    cert = session.get(AuthCertificate, cert_id)
+    if cert:
+        cert.in_use = True
+        cert.persona_id = persona_id
+        cert.assigned_at = datetime.utcnow()
+        session.add(cert)
+        session.commit()
+        session.refresh(cert)
+    return cert
+
+
+def release_certificate(session: Session, cert_id: int) -> bool:
+    """Returns a certificate to the pool."""
+    cert = session.get(AuthCertificate, cert_id)
+    if cert:
+        cert.in_use = False
+        cert.persona_id = None
+        cert.assigned_at = None
+        session.add(cert)
+        session.commit()
+        return True
+    return False
+
+
+def get_certificate_by_server_data(session: Session, server_data_10: str) -> AuthCertificate | None:
+    """Gets a certificate by its first 10 characters of server data."""
+    stmt = select(AuthCertificate).where(AuthCertificate.server_data_10 == server_data_10)
+    return session.exec(stmt).first()
