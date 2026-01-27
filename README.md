@@ -26,9 +26,9 @@ This project aims to:
 
 ### Planned
 
-- [x] **Sake Storage Server** - Storage
-- [x] **Stats server** - Stats
-- [x] **Competition server** - Post-match stats
+- [x] (done)**Sake Storage Server** - Storage
+- [x] (done)**Stats server** - Stats
+- [x] (done)**Competition server** - Post-match stats
 - [ ] **Web Server** - Account management and registration portal
 
 ## Quick Start
@@ -158,6 +158,7 @@ This project is provided for educational and preservation purposes.
 ## Disclaimer
 
 This project is not affiliated with or endorsed by Electronic Arts, Westwood Studios, or any related entities. Red Alert 3 and Command & Conquer are trademarks of Electronic Arts Inc.
+
 
 
 
