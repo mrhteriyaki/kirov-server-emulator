@@ -87,6 +87,16 @@ class TestSakeService:
         assert "GetSpecificRecordsResponse" in xml
         assert f"<GetSpecificRecordsResult>{SAKEResultCode.LOGIN_TICKET_INVALID}</GetSpecificRecordsResult>" in xml
 
+    def test_get_specific_records_unranked_losses(self):
+        """Test GetSpecificRecords returns defaults for UnrankedLosses table."""
+        response = handle_get_specific_records("UnrankedLosses", VALID_LOGIN_TICKET)
+        xml = wrap_soap_envelope(response)
+
+        assert "GetSpecificRecordsResponse" in xml
+        assert "<GetSpecificRecordsResult>Success</GetSpecificRecordsResult>" in xml
+        # All default to 0
+        assert xml.count("<shortValue><value>0</value></shortValue>") == 4
+
     def test_search_for_records_levels_filter(self):
         """Test SearchForRecords returns XP thresholds for Levels table."""
         response = handle_search_for_records("Levels", "", VALID_LOGIN_TICKET)
@@ -154,6 +164,7 @@ class TestCompetitionModels:
         assert "CreateSessionResponse" in xml
         assert "<CreateSessionResult>" in xml
         assert "<result>0</result>" in xml  # 0 = SUCCESS
+        assert "<message/>" in xml or "<message></message>" in xml
         assert "<csid>session123</csid>" in xml
         assert "<ccid>channel456</ccid>" in xml
         assert "soap:Envelope" in xml
@@ -168,13 +179,15 @@ class TestCompetitionModels:
         assert "<result>1</result>" in xml  # 1 = ERROR
 
     def test_set_report_intention_response_success(self):
-        """Test SetReportIntentionResponse success serialization with ccid echo."""
-        response = SetReportIntentionResponse.success(ccid="channel789")
+        """Test SetReportIntentionResponse success serialization with csid and ccid."""
+        response = SetReportIntentionResponse.success(csid="session123", ccid="channel789")
         xml = wrap_soap_envelope(response)
 
         assert "SetReportIntentionResponse" in xml
         assert "<SetReportIntentionResult>" in xml
         assert "<result>0</result>" in xml  # 0 = SUCCESS
+        assert "<message/>" in xml or "<message></message>" in xml
+        assert "<csid>session123</csid>" in xml
         assert "<ccid>channel789</ccid>" in xml
 
     def test_submit_report_response_success(self):
@@ -301,7 +314,7 @@ class TestSakeServiceIntegration:
         """
         Test SearchForRecords for PlayerStats_v5 with ownerid filter.
 
-        Based on real game request format - tests SOAP parsing and response generation.
+        Based on C# reference: returns [rank, ownerId] in a single ArrayOfRecordValue.
         """
         # Test login ticket: base64("12345|67890|testtoken")
         login_ticket = base64.b64encode(b"12345|67890|testtoken").decode("utf-8")
@@ -352,6 +365,13 @@ class TestSakeServiceIntegration:
         assert "<SearchForRecordsResult>Success</SearchForRecordsResult>" in xml
         assert "soap:Envelope" in xml
         assert "soap:Body" in xml
+
+        assert xml.count("<ArrayOfRecordValue>") == 1
+        assert xml.count("<RecordValue>") == 2
+        # Default rank is 57 per C# reference
+        assert "<intValue><value>57</value></intValue>" in xml
+        # Owner ID echoed back
+        assert "<intValue><value>12345</value></intValue>" in xml
 
     def test_get_my_records_player_stats_with_many_fields(self):
         """

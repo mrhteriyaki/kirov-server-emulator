@@ -35,6 +35,7 @@ class CreateSessionResult(BaseXmlModel, tag="CreateSessionResult"):
     """Result container for CreateSession with result code, csid, and ccid."""
 
     result: int = element(tag="result", default=0)
+    message: str = element(tag="message", default="")
     csid: str | None = element(tag="csid", default=None)
     ccid: str | None = element(tag="ccid", default=None)
 
@@ -77,9 +78,11 @@ class SetReportIntentionRequest(BaseXmlModel, tag="SetReportIntention", nsmap={"
 
 
 class SetReportIntentionResult(BaseXmlModel, tag="SetReportIntentionResult"):
-    """Result container for SetReportIntention with result code and ccid."""
+    """Result container for SetReportIntention with result code, csid, and ccid."""
 
     result: int = element(tag="result", default=0)
+    message: str = element(tag="message", default="")
+    csid: str | None = element(tag="csid", default=None)
     ccid: str | None = element(tag="ccid", default=None)
 
 
@@ -93,11 +96,12 @@ class SetReportIntentionResponse(BaseXmlModel, tag="SetReportIntentionResponse",
     result: SetReportIntentionResult = element(tag="SetReportIntentionResult")
 
     @classmethod
-    def success(cls, ccid: str) -> "SetReportIntentionResponse":
-        """Create a successful response."""
+    def success(cls, csid: str, ccid: str) -> "SetReportIntentionResponse":
+        """Create a successful response with csid and ccid."""
         return cls(
             result=SetReportIntentionResult(
                 result=CompetitionResultCode.SUCCESS,
+                csid=csid,
                 ccid=ccid,
             )
         )

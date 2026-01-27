@@ -256,6 +256,14 @@ def handle_get_specific_records(table_id: str, login_ticket: str) -> GetSpecific
         # Return scoring multipliers as short values
         for mult in SCORING_MULTIPLIERS:
             records.append(RecordValue.from_short(mult))
+    elif "UnrankedLosses" in str(table_id):
+        # Return [unrankedLosses, unrankedWins, rankedLosses, rankedWins] as shorts
+        records = [
+            RecordValue.from_short(0),  # UnrankedLosses
+            RecordValue.from_short(0),  # UnrankedWins
+            RecordValue.from_short(0),  # RankedLosses
+            RecordValue.from_short(0),  # RankedWins
+        ]
 
     if records:
         return GetSpecificRecordsResponse.success(records)
@@ -297,28 +305,50 @@ def handle_search_for_records(table_id: str, filter_str: str, login_ticket: str)
             # Each level is a single-element ArrayOfRecordValue
             record_lists.append([RecordValue.from_int(threshold)])
 
-    # Handle PlayerStats_v5 - leaderboard
+    # Handle PlayerStats_v5 - leaderboard or ownerid lookup
     elif "PlayerStats" in str(table_id) or "playerstats" in str(filter_str).lower():
-        session = create_session()
-        try:
-            stmt = select(Persona).limit(100)
-            personas = session.exec(stmt).all()
+        # Check for ownerid filter - returns [rank, ownerId] per C# reference
+        if "ownerid=" in filter_str.lower():
+            # Extract owner ID from filter
+            filter_lower = filter_str.lower()
+            owner_id_start = filter_lower.find("ownerid=") + len("ownerid=")
+            owner_id_str = ""
+            for char in filter_str[owner_id_start:]:
+                if char.isdigit():
+                    owner_id_str += char
+                else:
+                    break
+            owner_id = int(owner_id_str) if owner_id_str else 0
 
-            for persona in personas:
-                level = get_player_level(session, persona.id)
-                rank = level.rank if level else 1
-                score = level.score if level else 0
+            # Return single ArrayOfRecordValue with [rank, ownerId]
+            record_lists.append(
+                [
+                    RecordValue.from_int(57),  # Default rank (per C# reference)
+                    RecordValue.from_int(owner_id),
+                ]
+            )
+        else:
+            # General leaderboard query
+            session = create_session()
+            try:
+                stmt = select(Persona).limit(100)
+                personas = session.exec(stmt).all()
 
-                # Each player is an ArrayOfRecordValue with [profileId, rank, score]
-                record_lists.append(
-                    [
-                        RecordValue.from_int(persona.id),
-                        RecordValue.from_int(rank),
-                        RecordValue.from_int(score),
-                    ]
-                )
-        finally:
-            session.close()
+                for persona in personas:
+                    level = get_player_level(session, persona.id)
+                    rank = level.rank if level else 1
+                    score = level.score if level else 0
+
+                    # Each player is an ArrayOfRecordValue with [profileId, rank, score]
+                    record_lists.append(
+                        [
+                            RecordValue.from_int(persona.id),
+                            RecordValue.from_int(rank),
+                            RecordValue.from_int(score),
+                        ]
+                    )
+            finally:
+                session.close()
 
     # Handle NewsTicker
     elif "NewsTicker" in str(table_id) or "ticker" in str(filter_str).lower():

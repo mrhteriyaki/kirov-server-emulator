@@ -137,9 +137,9 @@ def handle_set_report_intention(csid: str, ccid: str, profile_id: int) -> SetRep
     try:
         success = set_report_intention(session, csid, profile_id)
         if success:
-            return SetReportIntentionResponse.success(ccid=ccid)
+            return SetReportIntentionResponse.success(csid=csid, ccid=ccid)
         else:
-            return SetReportIntentionResponse.error(ccid=ccid)
+            return SetReportIntentionResponse.error()
     finally:
         session.close()
 
