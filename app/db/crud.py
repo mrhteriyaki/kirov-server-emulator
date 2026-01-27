@@ -840,14 +840,3 @@ def get_certificate_by_server_data(session: Session, server_data_10: str) -> Aut
     return session.exec(stmt).first()
 
 
-def create_certificate(session: Session, certificate_data: str, server_data_10: str) -> AuthCertificate:
-    """Creates a new certificate in the pool."""
-    cert = AuthCertificate(
-        certificate_data=certificate_data,
-        server_data_10=server_data_10,
-        in_use=False,
-    )
-    session.add(cert)
-    session.commit()
-    session.refresh(cert)
-    return cert

@@ -63,7 +63,7 @@ class LoginRemoteAuthResponse(BaseXmlModel, tag="LoginRemoteAuthResponse", nsmap
         peerkeyprivate: str,
         timestamp: str,
     ) -> "LoginRemoteAuthResponse":
-        """Create a successful response with real player data and hardcoded crypto."""
+        """Create a successful response with real player data and dynamically generated crypto."""
         cert = Certificate(
             userid=user_id,
             profileid=profile_id,

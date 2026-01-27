@@ -8,6 +8,7 @@ import os
 
 from fastapi import APIRouter, Response
 
+from app.soap.envelope import wrap_soap_envelope
 from app.soap.models.clan import ClanInfo
 from app.util.logging_helper import get_logger
 from app.util.paths import get_base_path
@@ -15,11 +16,6 @@ from app.util.paths import get_base_path
 logger = get_logger(__name__)
 
 clan_router = APIRouter()
-
-
-def to_xml_response(model) -> str:
-    """Convert a pydantic_xml model to XML string with declaration."""
-    return '<?xml version="1.0" encoding="utf-8"?>' + model.to_xml(encoding="unicode")
 
 
 @clan_router.get("/clans/ClanActions.asmx/ClanInfoByProfileID")
@@ -36,7 +32,7 @@ async def clan_info_by_profile_id(authToken: str = "", profileid: int = 0):
     response_model = ClanInfo.no_clan()
 
     return Response(
-        content=to_xml_response(response_model),
+        content=wrap_soap_envelope(response_model),
         media_type="text/xml; charset=utf-8",
     )
 
