@@ -95,15 +95,9 @@ This starts:
 
 ### Web Portal
 
-The server includes a web portal for account management and server status. Access it at `http://localhost/` after starting the server.
+The server includes a web portal for account management, leaderboards, and live match viewing. Access it at `http://localhost/` after starting the server.
 
-| Page | URL | Description |
-|------|-----|-------------|
-| Home | `/` | Landing page with server overview, features, and getting started guide |
-| Register | `/register` | Create a new user account to play online |
-| Leaderboard | `/leaderboard` | View ELO rankings for all game modes (1v1, 2v2, clan matches) with win/loss stats |
-| Live Matches | `/matches` | See currently active games, players online, map info, and game settings |
-| API Docs | `/docs` | Interactive REST API documentation (Swagger UI) |
+See [Web Portal Documentation](docs/ui/WEB_PORTAL.md) for detailed information and screenshots.
 
 ### Running Tests
 
