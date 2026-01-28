@@ -154,6 +154,24 @@ def get_element_text(element: ET.Element, tag: str) -> str:
     return ""
 
 
+def get_child_element(element: ET.Element, tag: str) -> ET.Element | None:
+    """
+    Get a child element by tag name.
+
+    Args:
+        element: Parent element to search in.
+        tag: Tag name to find (without namespace).
+
+    Returns:
+        The found element, or None if not found.
+    """
+    for child in element:
+        child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+        if child_tag == tag:
+            return child
+    return None
+
+
 def create_soap_fault(fault_string: str, fault_code: str = "soap:Server") -> str:
     """
     Create a SOAP fault response.
