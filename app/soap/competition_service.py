@@ -22,7 +22,9 @@ from fastapi import APIRouter, Request, Response
 from app.db.crud import (
     complete_competition_session,
     create_competition_session,
+    extract_persona_from_ccid,
     finalize_match,
+    get_match_reports_for_session,
     increment_received_reports,
     mark_report_intent_reported,
     set_report_intention,
@@ -134,6 +136,7 @@ def save_match_report(csid: str, ccid: str, raw_report: bytes, report: MatchRepo
                     {
                         "full_id": p.full_id,
                         "persona_id": p.persona_id,
+                        "persona_id_valid": p.persona_id_valid,
                         "faction": p.faction,
                         "is_winner": p.is_winner,
                     }
@@ -261,23 +264,93 @@ def handle_submit_report(
             # Extract useful data for database storage
             player_list = report.get_player_list()
 
+            # Extract persona_id from ccid (this is reliable, we embedded it)
+            ccid_persona_id = extract_persona_from_ccid(ccid) if ccid else None
+            if ccid_persona_id:
+                logger.info("[%s] Extracted persona_id=%d from ccid", request_id, ccid_persona_id)
+                # Use ccid persona_id instead of SOAP profile_id for reliability
+                profile_id = ccid_persona_id
+
             # Find this player's data in the report
             player_result = 0
             player_faction = ""
+            player_found = False
+
+            # First try to match by persona_id
             for player in player_list:
                 if player.persona_id == profile_id:
                     player_result = 0 if player.is_winner else 1
                     player_faction = player.faction
                     player_full_id = player.full_id
+                    player_found = True
                     break
+
+            # If not found by persona_id, determine result from report structure
+            if not player_found:
+                if len(player_list) == 1:
+                    # Partial report: the single player IS the submitter
+                    player = player_list[0]
+                    player_result = 0 if player.is_winner else 1
+                    player_faction = player.faction
+                    player_full_id = player.full_id
+                    player_found = True
+                    logger.info(
+                        "[%s] Used partial report player data (persona_id mismatch: profile=%d vs parsed=%d)",
+                        request_id,
+                        profile_id,
+                        player.persona_id,
+                    )
+                elif len(player_list) == 2:
+                    # Final report: determine result by elimination
+                    # Check if another player already reported for this session
+                    db_session = create_session()
+                    try:
+                        existing_reports = get_match_reports_for_session(db_session, csid)
+                        if existing_reports:
+                            # Another player already reported - we're the opposite result
+                            other_result = existing_reports[0].result
+                            player_result = 0 if other_result == 1 else 1  # Opposite
+                            player_found = True
+                            logger.info(
+                                "[%s] Final report: determined result by elimination (other_result=%d, our_result=%d)",
+                                request_id,
+                                other_result,
+                                player_result,
+                            )
+                            # Use faction from winner if we won, loser if we lost
+                            for player in player_list:
+                                if (player_result == 0 and player.is_winner) or (
+                                    player_result == 1 and not player.is_winner
+                                ):
+                                    player_faction = player.faction
+                                    player_full_id = player.full_id
+                                    break
+                        else:
+                            # We're first to report with final report
+                            # Use is_winner from binary as fallback (winner position in report)
+                            for player in player_list:
+                                if player.is_winner:
+                                    player_result = 0  # Win
+                                    player_faction = player.faction
+                                    player_full_id = player.full_id
+                                    player_found = True
+                                    logger.info(
+                                        "[%s] Final report (first): using is_winner from binary (persona_id=%d)",
+                                        request_id,
+                                        profile_id,
+                                    )
+                                    break
+                    finally:
+                        db_session.close()
 
             # Map game type string to int
             # Valid1v1/AutoMatch1v1 -> 1, Valid2v2/AutoMatch2v2 -> 2
+            # ValidOther -> 0 (unranked/custom)
             game_type_str = report.get_game_type()
             gametype_int = 0  # Default unranked
-            if "1v1" in game_type_str and report.is_auto_match:
+            if "1v1" in game_type_str:
                 gametype_int = 1  # ranked_1v1
-            elif "2v2" in game_type_str and report.is_auto_match:
+            elif "2v2" in game_type_str:
                 gametype_int = 2  # ranked_2v2
 
             report_data = {

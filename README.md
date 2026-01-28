@@ -29,7 +29,7 @@ This project aims to:
 - [x] (done)**Sake Storage Server** - Storage
 - [x] (done)**Stats server** - Stats
 - [x] (done)**Competition server** - Post-match stats
-- [ ] **Web Server** - Account management and registration portal
+- [x] (done)**Web Portal** - Account registration, leaderboards, and live match viewer
 
 ## Quick Start
 
@@ -93,9 +93,17 @@ This starts:
 | Master Server | 28910 | TCP | Room/game list queries |
 | Heartbeat Server | 27900 | UDP | Game session registration |
 
-### Creating a User Account
+### Web Portal
 
-Visit `http://localhost/register.html` in your browser to create a new user account. You can add friends ingame.
+The server includes a web portal for account management and server status. Access it at `http://localhost/` after starting the server.
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Home | `/` | Landing page with server overview, features, and getting started guide |
+| Register | `/register` | Create a new user account to play online |
+| Leaderboard | `/leaderboard` | View ELO rankings for all game modes (1v1, 2v2, clan matches) with win/loss stats |
+| Live Matches | `/matches` | See currently active games, players online, map info, and game settings |
+| API Docs | `/docs` | Interactive REST API documentation (Swagger UI) |
 
 ### Running Tests
 

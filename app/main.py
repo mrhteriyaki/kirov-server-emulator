@@ -26,6 +26,7 @@ from app.soap.sake_service import sake_router
 from app.soap.service import soap_router
 from app.util.logging_helper import setup_logging
 from app.util.paths import get_base_path
+from app.web.routes import router as web_router
 
 
 @asynccontextmanager
@@ -172,6 +173,9 @@ app.include_router(auth_router)
 # Mount the Clan/Ladder stub router
 app.include_router(clan_router)
 
+# Mount the Web router (for HTML pages like leaderboard)
+app.include_router(web_router)
+
 
 @app.get("/health")
 async def health_check():
@@ -180,4 +184,4 @@ async def health_check():
 
 # Mount the static files directory LAST (it's a catch-all for `/`)
 static_path = os.path.join(get_base_path(), "static")
-app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
+app.mount("/", StaticFiles(directory=static_path), name="static")

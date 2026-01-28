@@ -63,6 +63,7 @@ class MatchPlayer:
     persona_id: int
     faction: str
     is_winner: bool
+    persona_id_valid: bool = True  # False if persona_id looks corrupted
 
 
 @dataclass
@@ -89,6 +90,7 @@ class ParsedPlayer:
     player_id: int
     faction: str
     result: int  # 0=win, 1=loss, 3=disconnect, 4=dsync
+    player_id_valid: bool = True  # False if persona_id looks corrupted
 
 
 class BinaryReader:
@@ -295,8 +297,19 @@ class MatchReport:
             if result_idx < len(self.result_section):
                 result = self.result_section[result_idx]
 
+            # Validate persona_id - valid IDs are typically < 50,000,000 and follow 0x00A8xxxx pattern
+            # Invalid IDs often come from opponent data in final reports where the game client
+            # doesn't know the actual persona_id
+            player_id_valid = 0 < player_id < 50_000_000
+
             self.parsed_players.append(
-                ParsedPlayer(full_id=full_id, player_id=player_id, faction=faction, result=result)
+                ParsedPlayer(
+                    full_id=full_id,
+                    player_id=player_id,
+                    faction=faction,
+                    result=result,
+                    player_id_valid=player_id_valid,
+                )
             )
 
         self.is_auto_match = auto_match_count > 0
@@ -309,6 +322,7 @@ class MatchReport:
                 persona_id=p.player_id,
                 faction=p.faction,
                 is_winner=(p.result == 0),
+                persona_id_valid=p.player_id_valid,
             )
             for p in self.parsed_players
         ]

@@ -877,9 +877,46 @@ def generate_csid() -> str:
     return secrets.token_urlsafe(16)
 
 
-def generate_ccid() -> str:
-    """Generates a unique Competition Channel ID."""
-    return secrets.token_urlsafe(12)
+def generate_ccid(persona_id: int = 0) -> str:
+    """
+    Generates a unique Competition Channel ID with embedded persona_id.
+
+    Format: base64url(persona_id as 4 bytes big-endian) + random suffix
+    This allows us to recover the persona_id from the ccid later.
+
+    Args:
+        persona_id: The persona ID to embed in the ccid.
+
+    Returns:
+        A unique ccid string with embedded persona_id.
+    """
+    # Encode persona_id as 4 bytes big-endian, then base64url (6 chars without padding)
+    persona_bytes = persona_id.to_bytes(4, "big")
+    encoded = base64.urlsafe_b64encode(persona_bytes).decode().rstrip("=")
+    # Add random suffix for uniqueness
+    random_suffix = secrets.token_urlsafe(8)
+    return f"{encoded}{random_suffix}"
+
+
+def extract_persona_from_ccid(ccid: str) -> int | None:
+    """
+    Extract persona_id from a ccid that was generated with generate_ccid.
+
+    Args:
+        ccid: The Competition Channel ID.
+
+    Returns:
+        The embedded persona_id, or None if extraction fails.
+    """
+    try:
+        # First 6 chars are base64url encoded persona_id (4 bytes -> 6 chars)
+        encoded = ccid[:6]
+        # Add padding for base64 decoding
+        padded = encoded + "=="
+        persona_bytes = base64.urlsafe_b64decode(padded)
+        return int.from_bytes(persona_bytes, "big")
+    except Exception:
+        return None
 
 
 def create_competition_session(session: Session, host_persona_id: int) -> CompetitionSession:
@@ -894,7 +931,7 @@ def create_competition_session(session: Session, host_persona_id: int) -> Compet
         New CompetitionSession with csid and ccid
     """
     csid = generate_csid()
-    ccid = generate_ccid()
+    ccid = generate_ccid(host_persona_id)  # Embed persona_id in ccid
 
     comp_session = CompetitionSession(
         csid=csid,
@@ -937,8 +974,8 @@ def set_report_intention(
     if comp_session is None:
         return None
 
-    # Generate a unique ccid for this player
-    player_ccid = generate_ccid()
+    # Generate a unique ccid for this player with embedded persona_id
+    player_ccid = generate_ccid(persona_id)
 
     # Create the report intent record
     intent = PlayerReportIntent(
@@ -1124,9 +1161,10 @@ def finalize_match(session: Session, csid: str) -> bool:
         winner_avg_elo = sum(player_results[pid]["elo"] for pid in winners) / len(winners) if winners else 1200
         loser_avg_elo = sum(player_results[pid]["elo"] for pid in losers) / len(losers) if losers else 1200
 
-        # Get game type from first report
-        first_report = reports[0]
-        game_type = game_type_map.get(first_report.gametype, "unranked")
+        # Get game type from the report with highest gametype value
+        # (partial reports may have gametype=0, final report has correct value)
+        max_gametype = max(report.gametype for report in reports)
+        game_type = game_type_map.get(max_gametype, "unranked")
 
         # Update each player
         for persona_id, data in player_results.items():
@@ -1212,3 +1250,63 @@ def get_certificate_by_server_data(session: Session, server_data_10: str) -> Aut
     """Gets a certificate by its first 10 characters of server data."""
     stmt = select(AuthCertificate).where(AuthCertificate.server_data_10 == server_data_10)
     return session.exec(stmt).first()
+
+
+# =============================================================================
+# Leaderboard Operations
+# =============================================================================
+
+
+def get_leaderboard(
+    session: Session,
+    game_type: str = "ranked_1v1",
+    limit: int = 50,
+) -> list[dict]:
+    """
+    Query PlayerStats joined with Persona, sorted by ELO descending.
+
+    Args:
+        session: Database session.
+        game_type: Game type (ranked_1v1, ranked_2v2, clan_1v1, clan_2v2).
+        limit: Maximum number of results to return.
+
+    Returns:
+        List of dicts with rank, name, elo, wins, losses, disconnects, win_ratio, total_games.
+    """
+    # Map game type to field names
+    elo_field = f"elo_{game_type}"
+    wins_field = f"wins_{game_type}"
+    losses_field = f"losses_{game_type}"
+    disconnects_field = f"disconnects_{game_type}"
+    win_ratio_field = f"win_ratio_{game_type}"
+
+    # Query PlayerStats joined with Persona
+    stmt = (
+        select(PlayerStats, Persona)
+        .join(Persona, PlayerStats.persona_id == Persona.id)
+        .order_by(getattr(PlayerStats, elo_field).desc())
+        .limit(limit)
+    )
+
+    results = session.exec(stmt).all()
+
+    leaderboard = []
+    for rank, (stats, persona) in enumerate(results, start=1):
+        wins = getattr(stats, wins_field, 0)
+        losses = getattr(stats, losses_field, 0)
+        total_games = wins + losses
+
+        leaderboard.append(
+            {
+                "rank": rank,
+                "name": persona.name,
+                "elo": getattr(stats, elo_field, 1200),
+                "wins": wins,
+                "losses": losses,
+                "disconnects": getattr(stats, disconnects_field, 0),
+                "win_ratio": round(getattr(stats, win_ratio_field, 0.0), 1),
+                "total_games": total_games,
+            }
+        )
+
+    return leaderboard
