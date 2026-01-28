@@ -30,6 +30,7 @@ This project aims to:
 - [x] (done)**Stats server** - Stats
 - [x] (done)**Competition server** - Post-match stats
 - [x] (done)**Web Portal** - Account registration, leaderboards, and live match viewer
+- [ ] **Clan System** - See, create and join clans
 
 ## Quick Start
 
@@ -160,6 +161,7 @@ This project is provided for educational and preservation purposes.
 ## Disclaimer
 
 This project is not affiliated with or endorsed by Electronic Arts, Westwood Studios, or any related entities. Red Alert 3 and Command & Conquer are trademarks of Electronic Arts Inc.
+
 
 
 
