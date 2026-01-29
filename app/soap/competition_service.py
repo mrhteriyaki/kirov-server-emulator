@@ -117,6 +117,12 @@ def save_match_report(csid: str, ccid: str, raw_report: bytes, report: MatchRepo
             json_filename = f"Report_{csid}_{player_id}_{timestamp}.json"
             json_path = os.path.join(REPORT_DIR, json_filename)
             player_list = report.get_player_list()
+            # Convert team_section DataValue objects to JSON-serializable format
+            team_section_json = [
+                {str(k): {"type": v.value_type.name, "value": v.value} for k, v in team.items()}
+                for team in report.team_section
+            ]
+
             report_dict = {
                 "save_time": datetime.now().isoformat(),
                 "csid": csid,
@@ -129,8 +135,11 @@ def save_match_report(csid: str, ccid: str, raw_report: bytes, report: MatchRepo
                 "team_count": report.team_count,
                 "map_path": report.get_map_path(),
                 "replay_guid": report.get_replay_guid(),
+                "duration": report.get_duration(),
                 "game_type": report.get_game_type(),
+                "game_type_key": report.get_game_type_from_key(),
                 "is_auto_match": report.is_auto_match,
+                "is_clan_game": report.is_clan_game(),
                 "is_final_report": len(player_list) > 1,
                 "players": [
                     {
@@ -139,9 +148,11 @@ def save_match_report(csid: str, ccid: str, raw_report: bytes, report: MatchRepo
                         "persona_id_valid": p.persona_id_valid,
                         "faction": p.faction,
                         "is_winner": p.is_winner,
+                        "team_id": p.team_id,
                     }
                     for p in player_list
                 ],
+                "team_section": team_section_json,
                 "winner_ids": report.get_winner_id_list(),
                 "loser_ids": report.get_loser_id_list(),
             }
@@ -345,10 +356,15 @@ def handle_submit_report(
 
             # Map game type string to int
             # Valid1v1/AutoMatch1v1 -> 1, Valid2v2/AutoMatch2v2 -> 2
+            # Clan1v1 -> 3, Clan2v2 -> 4
             # ValidOther -> 0 (unranked/custom)
             game_type_str = report.get_game_type()
             gametype_int = 0  # Default unranked
-            if "1v1" in game_type_str:
+            if "Clan1v1" in game_type_str:
+                gametype_int = 3  # clan_1v1
+            elif "Clan2v2" in game_type_str:
+                gametype_int = 4  # clan_2v2
+            elif "1v1" in game_type_str:
                 gametype_int = 1  # ranked_1v1
             elif "2v2" in game_type_str:
                 gametype_int = 2  # ranked_2v2
@@ -356,7 +372,7 @@ def handle_submit_report(
             report_data = {
                 "result": player_result,
                 "faction": player_faction,
-                "duration": 0,  # Will be calculated from session timestamps
+                "duration": report.get_duration(),
                 "gametype": gametype_int,
                 "map_name": report.get_map_path(),
             }
