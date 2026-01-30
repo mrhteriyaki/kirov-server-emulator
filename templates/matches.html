@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Live Matches - RA3 Server{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <h1><i class="bi bi-broadcast text-success me-2"></i>Live Matches</h1>
+            <p>Currently active games on the server</p>
+        </div>
+        <div class="d-flex gap-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_matches }}</div>
+                <div class="stat-label">Active Games</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_players }}</div>
+                <div class="stat-label">Players Online</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if matches %}
+<div class="row g-4">
+    {% for match in matches %}
+    <div class="col-lg-6 col-xl-4">
+        <div class="card match-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-{{ match.status_color }}">{{ match.status }}</span>
+                        {% if match.has_password %}
+                        <span class="badge bg-dark border border-secondary" title="Password Protected">
+                            <i class="bi bi-lock-fill"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+                    <span class="game-type-badge">
+                        <i class="bi bi-{{ match.game_type_icon }} me-1"></i>{{ match.game_type }}
+                    </span>
+                </div>
+
+                <h5 class="match-hostname mb-1">{{ match.hostname }}</h5>
+                <p class="match-map mb-3">
+                    <i class="bi bi-map me-1"></i>{{ match.map_name }}
+                </p>
+
+                <div class="match-details">
+                    <div class="detail-row">
+                        <span class="detail-label">
+                            <i class="bi bi-people-fill me-1"></i>Players
+                        </span>
+                        <span class="detail-value">
+                            <span class="player-count">{{ match.num_players }}</span>
+                            <span class="player-separator">/</span>
+                            <span class="player-max">{{ match.max_players }}</span>
+                            {% if match.num_required > 0 %}
+                            <span class="player-required">({{ match.num_required }}/{{ match.max_required }} required)</span>
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    {% if match.players %}
+                    <div class="detail-row player-list-row">
+                        <span class="detail-label">
+                            <i class="bi bi-person-fill me-1"></i>In Game
+                        </span>
+                        <span class="detail-value player-names">
+                            {% for player in match.players %}
+                            <span class="player-tag" title="W: {{ player.wins }} / L: {{ player.losses }}">
+                                {{ player.name }}
+                            </span>
+                            {% endfor %}
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if match.observers_allowed %}
+                    <div class="detail-row">
+                        <span class="detail-label">
+                            <i class="bi bi-eye me-1"></i>Observers
+                        </span>
+                        <span class="detail-value">{{ match.num_observers }} watching</span>
+                    </div>
+                    {% endif %}
+
+                    <div class="detail-row">
+                        <span class="detail-label">
+                            <i class="bi bi-box me-1"></i>Mod
+                        </span>
+                        <span class="detail-value">{{ match.mod }}{% if match.mod_version %} v{{ match.mod_version }}{% endif %}</span>
+                    </div>
+
+                    <div class="detail-row">
+                        <span class="detail-label">
+                            <i class="bi bi-tag me-1"></i>Version
+                        </span>
+                        <span class="detail-value">{{ match.version }}</span>
+                    </div>
+                </div>
+
+                <div class="match-progress mt-3">
+                    {% set fill_percent = (match.num_players / match.max_players * 100) if match.max_players > 0 else 0 %}
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-{{ match.status_color }}" style="width: {{ fill_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="text-center mt-4">
+    <small class="text-muted">
+        <i class="bi bi-arrow-repeat me-1"></i>
+        Refresh the page to see updated match data
+    </small>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-controller fs-1 text-muted d-block mb-3"></i>
+        <h4 class="text-secondary">No Active Matches</h4>
+        <p class="text-muted mb-0">There are currently no games being hosted.</p>
+        <p class="text-muted">Start a game in Red Alert 3 to see it listed here!</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .stat-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1rem 1.5rem;
+        text-align: center;
+        min-width: 100px;
+    }
+
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.25rem;
+    }
+
+    .match-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .match-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .match-hostname {
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .match-map {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .game-type-badge {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .match-details {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.35rem 0;
+    }
+
+    .detail-row:not(:last-child) {
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .detail-label {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
+
+    .detail-value {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+    }
+
+    .player-count {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .player-separator {
+        color: var(--text-muted);
+        margin: 0 0.15rem;
+    }
+
+    .player-max {
+        color: var(--text-muted);
+    }
+
+    .player-required {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+    }
+
+    .progress {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+    }
+
+    .badge.bg-warning {
+        color: #000;
+    }
+
+    .player-list-row {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.5rem;
+    }
+
+    .player-names {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .player-tag {
+        background: linear-gradient(135deg, rgba(88, 166, 255, 0.15) 0%, rgba(88, 166, 255, 0.08) 100%);
+        border: 1px solid rgba(88, 166, 255, 0.3);
+        color: var(--text-link);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}

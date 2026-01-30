@@ -237,22 +237,120 @@ class HeartbeatMaster(asyncio.DatagramProtocol):
         """
         Parse heartbeat body into key-value dict.
 
-        Format: key\0value\0key\0value\0...\0\0
+        Format (QR2 protocol):
+            key\0value\0key\0value\0...\0  (basic fields, ends with empty key)
+            \0                             (padding/separator)
+            u8 playerCount                 (optional player data section)
+            field1\0field2\0...\0\0        (player field names)
+            p1_val1\0p1_val2\0...\0        (player 1 values)
+            p2_val1\0p2_val2\0...\0        (player 2 values)
+            ...
         """
         info = {}
+
+        # Split by null bytes
         tokens = body.split(b"\x00")
 
+        # Parse key-value pairs until we hit an empty key
         i = 0
+        player_section_start = -1
+
         while i < len(tokens) - 1:
             key = tokens[i]
+
             if not key:
+                # Empty key marks end of basic fields section
+                # Next non-empty byte sequence after this should be player data
+                player_section_start = i + 1
                 break
+
             value = tokens[i + 1] if i + 1 < len(tokens) else b""
             with contextlib.suppress(Exception):
                 info[key.decode("utf-8", errors="ignore")] = value.decode("utf-8", errors="ignore")
             i += 2
 
+        # Parse player data section if present
+        # After the empty key, we may have: empty token(s), then player count embedded
+        # Or the player count might be at the start of a token
+        if player_section_start > 0 and player_section_start < len(tokens):
+            remaining_tokens = tokens[player_section_start:]
+
+            # Skip empty tokens to find player section
+            for idx, token in enumerate(remaining_tokens):
+                if token and len(token) >= 1:
+                    # Check if first byte could be player count (1-12)
+                    first_byte = token[0]
+                    if 1 <= first_byte <= 12:
+                        # This looks like player count + field names
+                        player_count = first_byte
+                        # Rest of this token + subsequent tokens are player data
+                        player_tokens = [token[1:]] + list(remaining_tokens[idx + 1 :])
+                        # Filter out empty tokens at start
+                        while player_tokens and not player_tokens[0]:
+                            player_tokens.pop(0)
+
+                        players = self._parse_player_tokens(player_tokens, player_count)
+                        if players:
+                            info["_players"] = players
+                        break
+
         return info
+
+    def _parse_player_tokens(self, tokens: list[bytes], player_count: int) -> list[dict]:
+        """
+        Parse player data from pre-split tokens.
+
+        Format:
+            field1, field2, ..., '' (field names ending with empty token)
+            p1_val1, p1_val2, ... (values for player 1)
+            p2_val1, p2_val2, ... (values for player 2)
+        """
+        if not tokens:
+            return []
+
+        # Find field names (they end with _ like "player_", "name_", etc.)
+        field_names = []
+        value_start_idx = 0
+
+        for i, token in enumerate(tokens):
+            try:
+                name = token.decode("utf-8", errors="ignore")
+                if name.endswith("_"):
+                    field_names.append(name.rstrip("_"))
+                elif name == "" and field_names:
+                    # Empty token marks end of field names
+                    value_start_idx = i + 1
+                    break
+            except Exception:
+                break
+
+        if not field_names:
+            return []
+
+        # Parse player values
+        players = []
+        values = tokens[value_start_idx:]
+
+        values_per_player = len(field_names)
+        for p in range(player_count):
+            start = p * values_per_player
+            end = start + values_per_player
+
+            if end > len(values):
+                break
+
+            player = {}
+            for f_idx, field in enumerate(field_names):
+                try:
+                    val = values[start + f_idx].decode("utf-8", errors="ignore")
+                    player[field] = val
+                except (IndexError, Exception):
+                    pass
+
+            if player:
+                players.append(player)
+
+        return players
 
     def _send(self, data: bytes, addr: tuple[str, int]):
         """Send UDP response."""

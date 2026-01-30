@@ -29,7 +29,8 @@ This project aims to:
 - [x] (done)**Sake Storage Server** - Storage
 - [x] (done)**Stats server** - Stats
 - [x] (done)**Competition server** - Post-match stats
-- [ ] **Web Server** - Account management and registration portal
+- [x] (done)**Web Portal** - Account registration, leaderboards, and live match viewer
+- [x] (done)**Clan System** - Create, join, and manage clans with in-game integration
 
 ## Quick Start
 
@@ -93,9 +94,11 @@ This starts:
 | Master Server | 28910 | TCP | Room/game list queries |
 | Heartbeat Server | 27900 | UDP | Game session registration |
 
-### Creating a User Account
+### Web Portal
 
-Visit `http://localhost/register.html` in your browser to create a new user account. You can add friends ingame.
+The server includes a web portal for account management, leaderboards, and live match viewing. Access it at `http://localhost/` after starting the server.
+
+See [Web Portal Documentation](docs/ui/WEB_PORTAL.md) for detailed information and screenshots.
 
 ### Running Tests
 
@@ -158,6 +161,7 @@ This project is provided for educational and preservation purposes.
 ## Disclaimer
 
 This project is not affiliated with or endorsed by Electronic Arts, Westwood Studios, or any related entities. Red Alert 3 and Command & Conquer are trademarks of Electronic Arts Inc.
+
 
 
 

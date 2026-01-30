@@ -9,6 +9,8 @@ from sqlmodel import Session, select
 from app.models.models import (
     AuthCertificate,
     BuddyRequest,
+    Clan,
+    ClanMembership,
     CompetitionSession,
     FeslSession,
     Friend,
@@ -19,9 +21,11 @@ from app.models.models import (
     MatchReport,
     Persona,
     PlayerLevel,
+    PlayerReportIntent,
     PlayerStats,
     User,
     UserCreate,
+    WebSession,
 )
 from app.security import hash_password, verify_password
 
@@ -669,6 +673,204 @@ def create_or_update_player_level(session: Session, persona_id: int, rank: int =
 
 
 # =============================================================================
+# ELO Rating Operations
+# =============================================================================
+
+
+def calculate_expected_score(player_rating: int, opponent_rating: int) -> float:
+    """
+    Calculate the expected score for a player against an opponent.
+
+    Formula: Expected = 1 / (1 + 10^((OpponentRating - PlayerRating) / 400))
+
+    Args:
+        player_rating: The player's current ELO rating.
+        opponent_rating: The opponent's current ELO rating.
+
+    Returns:
+        Expected score between 0.0 and 1.0.
+    """
+    return 1.0 / (1.0 + pow(10, (opponent_rating - player_rating) / 400.0))
+
+
+def get_k_factor(games_played: int, current_rating: int) -> int:
+    """
+    Determine the K-factor for ELO calculation.
+
+    K-factors:
+    - K=40 for new players (<30 games)
+    - K=20 for established players
+    - K=10 for elite players (2400+ rating)
+
+    Args:
+        games_played: Number of games played in this game type.
+        current_rating: Current ELO rating.
+
+    Returns:
+        K-factor value (10, 20, or 40).
+    """
+    if current_rating >= 2400:
+        return 10
+    if games_played < 30:
+        return 40
+    return 20
+
+
+def calculate_new_elo(player_rating: int, opponent_rating: int, actual_score: float, k_factor: int) -> int:
+    """
+    Calculate new ELO rating after a match.
+
+    Formula: New = Old + K * (Actual - Expected)
+
+    Args:
+        player_rating: Current player rating.
+        opponent_rating: Opponent's rating.
+        actual_score: 1.0 for win, 0.5 for draw, 0.0 for loss.
+        k_factor: K-factor for calculation.
+
+    Returns:
+        New ELO rating (minimum 100).
+    """
+    expected = calculate_expected_score(player_rating, opponent_rating)
+    new_rating = player_rating + k_factor * (actual_score - expected)
+    return max(100, int(round(new_rating)))
+
+
+def update_player_elo(
+    session: Session,
+    persona_id: int,
+    game_type: str,
+    opponent_rating: int,
+    won: bool,
+    disconnected: bool = False,
+) -> PlayerStats:
+    """
+    Update a player's ELO rating after a match.
+
+    Args:
+        session: Database session.
+        persona_id: Player's persona ID.
+        game_type: Game type (ranked_1v1, ranked_2v2, clan_1v1, clan_2v2).
+        opponent_rating: Opponent's ELO rating.
+        won: True if player won, False if lost.
+        disconnected: True if player disconnected (1.5x K-factor penalty on loss).
+
+    Returns:
+        Updated PlayerStats.
+    """
+    stats = get_player_stats(session, persona_id)
+    if stats is None:
+        stats = PlayerStats(persona_id=persona_id)
+        session.add(stats)
+        session.commit()
+        session.refresh(stats)
+
+    # Map game type to field names
+    elo_field = f"elo_{game_type}"
+    games_field = f"games_{game_type}"
+
+    current_elo = getattr(stats, elo_field, 1200)
+    games_played = getattr(stats, games_field, 0)
+
+    # Calculate K-factor
+    k_factor = get_k_factor(games_played, current_elo)
+
+    # Apply disconnect penalty (1.5x K on loss)
+    if disconnected and not won:
+        k_factor = int(k_factor * 1.5)
+
+    # Calculate new rating
+    actual_score = 1.0 if won else 0.0
+    new_elo = calculate_new_elo(current_elo, opponent_rating, actual_score, k_factor)
+
+    # Update stats
+    setattr(stats, elo_field, new_elo)
+    setattr(stats, games_field, games_played + 1)
+    stats.updated_at = datetime.utcnow()
+
+    session.add(stats)
+    session.commit()
+    session.refresh(stats)
+    return stats
+
+
+def update_player_win_loss(
+    session: Session,
+    persona_id: int,
+    game_type: str,
+    result: int,
+    duration: int = 0,
+) -> PlayerStats:
+    """
+    Update a player's win/loss/disconnect/dsync counters.
+
+    Args:
+        session: Database session.
+        persona_id: Player's persona ID.
+        game_type: Game type (unranked, ranked_1v1, ranked_2v2, clan_1v1, clan_2v2).
+        result: Match result (0=win, 1=loss, 3=disconnect, 4=dsync).
+        duration: Match duration in seconds.
+
+    Returns:
+        Updated PlayerStats.
+    """
+    stats = get_player_stats(session, persona_id)
+    if stats is None:
+        stats = PlayerStats(persona_id=persona_id)
+        session.add(stats)
+        session.commit()
+        session.refresh(stats)
+
+    # Update win/loss/dc/dsync counters
+    if result == 0:  # Win
+        wins_field = f"wins_{game_type}"
+        current_wins = getattr(stats, wins_field, 0)
+        setattr(stats, wins_field, current_wins + 1)
+    elif result == 1:  # Loss
+        losses_field = f"losses_{game_type}"
+        current_losses = getattr(stats, losses_field, 0)
+        setattr(stats, losses_field, current_losses + 1)
+    elif result == 3:  # Disconnect
+        dc_field = f"disconnects_{game_type}"
+        current_dc = getattr(stats, dc_field, 0)
+        setattr(stats, dc_field, current_dc + 1)
+    elif result == 4:  # Dsync
+        dsync_field = f"desyncs_{game_type}"
+        current_dsync = getattr(stats, dsync_field, 0)
+        setattr(stats, dsync_field, current_dsync + 1)
+
+    # Update average game length
+    if duration > 0:
+        avg_field = f"avg_game_length_{game_type}"
+        wins_field = f"wins_{game_type}"
+        losses_field = f"losses_{game_type}"
+        total_games = getattr(stats, wins_field, 0) + getattr(stats, losses_field, 0)
+        if total_games > 0:
+            current_avg = getattr(stats, avg_field, 0)
+            new_avg = int((current_avg * (total_games - 1) + duration) / total_games)
+            setattr(stats, avg_field, new_avg)
+
+    # Update win ratio
+    wins_field = f"wins_{game_type}"
+    losses_field = f"losses_{game_type}"
+    wins = getattr(stats, wins_field, 0)
+    losses = getattr(stats, losses_field, 0)
+    total = wins + losses
+    if total > 0:
+        ratio_field = f"win_ratio_{game_type}"
+        setattr(stats, ratio_field, (wins / total) * 100)
+
+    # Update total matches online
+    stats.total_matches_online += 1
+    stats.updated_at = datetime.utcnow()
+
+    session.add(stats)
+    session.commit()
+    session.refresh(stats)
+    return stats
+
+
+# =============================================================================
 # Competition Session Operations
 # =============================================================================
 
@@ -678,9 +880,46 @@ def generate_csid() -> str:
     return secrets.token_urlsafe(16)
 
 
-def generate_ccid() -> str:
-    """Generates a unique Competition Channel ID."""
-    return secrets.token_urlsafe(12)
+def generate_ccid(persona_id: int = 0) -> str:
+    """
+    Generates a unique Competition Channel ID with embedded persona_id.
+
+    Format: base64url(persona_id as 4 bytes big-endian) + random suffix
+    This allows us to recover the persona_id from the ccid later.
+
+    Args:
+        persona_id: The persona ID to embed in the ccid.
+
+    Returns:
+        A unique ccid string with embedded persona_id.
+    """
+    # Encode persona_id as 4 bytes big-endian, then base64url (6 chars without padding)
+    persona_bytes = persona_id.to_bytes(4, "big")
+    encoded = base64.urlsafe_b64encode(persona_bytes).decode().rstrip("=")
+    # Add random suffix for uniqueness
+    random_suffix = secrets.token_urlsafe(8)
+    return f"{encoded}{random_suffix}"
+
+
+def extract_persona_from_ccid(ccid: str) -> int | None:
+    """
+    Extract persona_id from a ccid that was generated with generate_ccid.
+
+    Args:
+        ccid: The Competition Channel ID.
+
+    Returns:
+        The embedded persona_id, or None if extraction fails.
+    """
+    try:
+        # First 6 chars are base64url encoded persona_id (4 bytes -> 6 chars)
+        encoded = ccid[:6]
+        # Add padding for base64 decoding
+        padded = encoded + "=="
+        persona_bytes = base64.urlsafe_b64decode(padded)
+        return int.from_bytes(persona_bytes, "big")
+    except Exception:
+        return None
 
 
 def create_competition_session(session: Session, host_persona_id: int) -> CompetitionSession:
@@ -695,7 +934,7 @@ def create_competition_session(session: Session, host_persona_id: int) -> Compet
         New CompetitionSession with csid and ccid
     """
     csid = generate_csid()
-    ccid = generate_ccid()
+    ccid = generate_ccid(host_persona_id)  # Embed persona_id in ccid
 
     comp_session = CompetitionSession(
         csid=csid,
@@ -716,21 +955,78 @@ def get_competition_session(session: Session, csid: str) -> CompetitionSession |
     return session.exec(stmt).first()
 
 
-def set_report_intention(session: Session, csid: str, persona_id: int) -> bool:
+def set_report_intention(
+    session: Session, csid: str, ccid: str, persona_id: int, full_id: str = ""
+) -> PlayerReportIntent | None:
     """
     Signals that a player intends to submit a match report.
 
+    Creates a PlayerReportIntent record and generates a new ccid for this player.
+
     Args:
-        session: Database session
-        csid: Competition Session ID
-        persona_id: Persona ID
+        session: Database session.
+        csid: Competition Session ID.
+        ccid: Competition Channel ID (passed in from request).
+        persona_id: Persona ID.
+        full_id: Player's full GUID from the game.
 
     Returns:
-        True if successful
+        PlayerReportIntent if successful, None otherwise.
     """
-    # For now, just verify the session exists
     comp_session = get_competition_session(session, csid)
-    return comp_session is not None
+    if comp_session is None:
+        return None
+
+    # Generate a unique ccid for this player with embedded persona_id
+    player_ccid = generate_ccid(persona_id)
+
+    # Create the report intent record
+    intent = PlayerReportIntent(
+        csid=csid,
+        ccid=player_ccid,
+        persona_id=persona_id,
+        full_id=full_id,
+        reported=False,
+    )
+    session.add(intent)
+    session.commit()
+    session.refresh(intent)
+
+    return intent
+
+
+def get_report_intent(session: Session, csid: str, persona_id: int) -> PlayerReportIntent | None:
+    """Gets a report intent by csid and persona_id."""
+    stmt = select(PlayerReportIntent).where(
+        PlayerReportIntent.csid == csid,
+        PlayerReportIntent.persona_id == persona_id,
+    )
+    return session.exec(stmt).first()
+
+
+def get_report_intent_by_ccid(session: Session, ccid: str) -> PlayerReportIntent | None:
+    """Gets a report intent by ccid."""
+    stmt = select(PlayerReportIntent).where(PlayerReportIntent.ccid == ccid)
+    return session.exec(stmt).first()
+
+
+def get_all_report_intents(session: Session, csid: str) -> list[PlayerReportIntent]:
+    """Gets all report intents for a competition session."""
+    stmt = select(PlayerReportIntent).where(PlayerReportIntent.csid == csid)
+    return list(session.exec(stmt).all())
+
+
+def mark_report_intent_reported(session: Session, ccid: str, full_id: str = "") -> PlayerReportIntent | None:
+    """Marks a report intent as reported and updates full_id if provided."""
+    intent = get_report_intent_by_ccid(session, ccid)
+    if intent:
+        intent.reported = True
+        if full_id:
+            intent.full_id = full_id
+        session.add(intent)
+        session.commit()
+        session.refresh(intent)
+    return intent
 
 
 def submit_match_report(
@@ -780,6 +1076,127 @@ def complete_competition_session(session: Session, csid: str) -> bool:
         session.commit()
         return True
     return False
+
+
+def increment_received_reports(session: Session, csid: str) -> CompetitionSession | None:
+    """Increments the received_reports counter for a competition session."""
+    comp_session = get_competition_session(session, csid)
+    if comp_session:
+        comp_session.received_reports += 1
+        session.add(comp_session)
+        session.commit()
+        session.refresh(comp_session)
+    return comp_session
+
+
+def get_match_reports_for_session(session: Session, csid: str) -> list[MatchReport]:
+    """Gets all match reports for a competition session."""
+    stmt = select(MatchReport).where(MatchReport.csid == csid)
+    return list(session.exec(stmt).all())
+
+
+def finalize_match(session: Session, csid: str) -> bool:
+    """
+    Finalize a match by calculating and updating ELO ratings.
+
+    This function should be called when all reports have been received.
+    It correlates winners/losers from the reports and updates player stats.
+
+    Args:
+        session: Database session.
+        csid: Competition Session ID.
+
+    Returns:
+        True if match was finalized successfully.
+    """
+    comp_session = get_competition_session(session, csid)
+    if comp_session is None or comp_session.finalized:
+        return False
+
+    # Get all match reports for this session
+    reports = get_match_reports_for_session(session, csid)
+    if not reports:
+        return False
+
+    # Calculate match duration from session creation time
+    duration = int((datetime.utcnow() - comp_session.created_at).total_seconds())
+
+    # Determine game type string from the gametype int
+    # 0=unranked, 1=ranked_1v1, 2=ranked_2v2, 3=clan_1v1, 4=clan_2v2
+    game_type_map = {
+        0: "unranked",
+        1: "ranked_1v1",
+        2: "ranked_2v2",
+        3: "clan_1v1",
+        4: "clan_2v2",
+    }
+
+    # Collect player results from reports
+    player_results: dict[int, dict] = {}  # persona_id -> {result, faction, elo}
+
+    for report in reports:
+        persona_id = report.persona_id
+        if persona_id not in player_results:
+            # Get current ELO for this player
+            stats = get_player_stats(session, persona_id)
+            game_type = game_type_map.get(report.gametype, "unranked")
+
+            # Get current ELO based on game type
+            current_elo = 1200
+            if stats and game_type != "unranked":
+                elo_field = f"elo_{game_type}"
+                current_elo = getattr(stats, elo_field, 1200)
+
+            player_results[persona_id] = {
+                "result": report.result,
+                "faction": report.faction,
+                "gametype": report.gametype,
+                "elo": current_elo,
+            }
+
+    # If we have at least 2 players, update stats
+    if len(player_results) >= 2:
+        # Separate winners and losers
+        winners = [pid for pid, data in player_results.items() if data["result"] == 0]
+        losers = [pid for pid, data in player_results.items() if data["result"] in (1, 3, 4)]
+
+        # Calculate average opponent ELO for each group
+        winner_avg_elo = sum(player_results[pid]["elo"] for pid in winners) / len(winners) if winners else 1200
+        loser_avg_elo = sum(player_results[pid]["elo"] for pid in losers) / len(losers) if losers else 1200
+
+        # Get game type from the report with highest gametype value
+        # (partial reports may have gametype=0, final report has correct value)
+        max_gametype = max(report.gametype for report in reports)
+        game_type = game_type_map.get(max_gametype, "unranked")
+
+        # Update each player
+        for persona_id, data in player_results.items():
+            result = data["result"]
+            is_winner = result == 0
+            is_disconnect = result == 3
+
+            # Update win/loss counters
+            update_player_win_loss(session, persona_id, game_type, result, duration)
+
+            # Update ELO if this is a ranked game type
+            if game_type != "unranked":
+                opponent_elo = int(loser_avg_elo if is_winner else winner_avg_elo)
+                update_player_elo(
+                    session,
+                    persona_id,
+                    game_type,
+                    opponent_elo,
+                    won=is_winner,
+                    disconnected=is_disconnect,
+                )
+
+    # Mark session as finalized
+    comp_session.finalized = True
+    comp_session.status = "completed"
+    session.add(comp_session)
+    session.commit()
+
+    return True
 
 
 # =============================================================================
@@ -836,3 +1253,405 @@ def get_certificate_by_server_data(session: Session, server_data_10: str) -> Aut
     """Gets a certificate by its first 10 characters of server data."""
     stmt = select(AuthCertificate).where(AuthCertificate.server_data_10 == server_data_10)
     return session.exec(stmt).first()
+
+
+# =============================================================================
+# Leaderboard Operations
+# =============================================================================
+
+
+def get_leaderboard(
+    session: Session,
+    game_type: str = "ranked_1v1",
+    limit: int = 50,
+) -> list[dict]:
+    """
+    Query PlayerStats joined with Persona, sorted by ELO descending.
+
+    Args:
+        session: Database session.
+        game_type: Game type (ranked_1v1, ranked_2v2, clan_1v1, clan_2v2).
+        limit: Maximum number of results to return.
+
+    Returns:
+        List of dicts with rank, name, elo, wins, losses, disconnects, win_ratio, total_games.
+    """
+    # Map game type to field names
+    elo_field = f"elo_{game_type}"
+    wins_field = f"wins_{game_type}"
+    losses_field = f"losses_{game_type}"
+    disconnects_field = f"disconnects_{game_type}"
+    win_ratio_field = f"win_ratio_{game_type}"
+
+    # Query PlayerStats joined with Persona
+    stmt = (
+        select(PlayerStats, Persona)
+        .join(Persona, PlayerStats.persona_id == Persona.id)
+        .order_by(getattr(PlayerStats, elo_field).desc())
+        .limit(limit)
+    )
+
+    results = session.exec(stmt).all()
+
+    leaderboard = []
+    for rank, (stats, persona) in enumerate(results, start=1):
+        wins = getattr(stats, wins_field, 0)
+        losses = getattr(stats, losses_field, 0)
+        total_games = wins + losses
+
+        leaderboard.append(
+            {
+                "rank": rank,
+                "name": persona.name,
+                "elo": getattr(stats, elo_field, 1200),
+                "wins": wins,
+                "losses": losses,
+                "disconnects": getattr(stats, disconnects_field, 0),
+                "win_ratio": round(getattr(stats, win_ratio_field, 0.0), 1),
+                "total_games": total_games,
+            }
+        )
+
+    return leaderboard
+
+
+# =============================================================================
+# Clan Operations
+# =============================================================================
+
+
+def create_clan(
+    session: Session,
+    name: str,
+    tag: str,
+    leader_persona_id: int,
+    description: str | None = None,
+) -> Clan:
+    """
+    Create a new clan with the specified persona as leader.
+
+    Args:
+        session: Database session
+        name: Clan name (unique)
+        tag: Clan tag (unique, max 10 chars)
+        leader_persona_id: Persona ID of the clan leader
+        description: Optional clan description
+
+    Returns:
+        Created Clan
+
+    Raises:
+        ValueError: If persona is already in a clan
+    """
+    # Check if persona is already in a clan
+    existing = get_persona_clan(session, leader_persona_id)
+    if existing:
+        raise ValueError("Persona is already in a clan")
+
+    # Create the clan
+    clan = Clan(name=name, tag=tag, description=description)
+    session.add(clan)
+    session.commit()
+    session.refresh(clan)
+
+    # Create leader membership
+    membership = ClanMembership(
+        clan_id=clan.id,
+        persona_id=leader_persona_id,
+        position=7,  # Leader
+    )
+    session.add(membership)
+    session.commit()
+
+    return clan
+
+
+def get_clan_by_id(session: Session, clan_id: int) -> Clan | None:
+    """Get a clan by ID."""
+    return session.get(Clan, clan_id)
+
+
+def get_clan_by_name(session: Session, name: str) -> Clan | None:
+    """Get a clan by name."""
+    stmt = select(Clan).where(Clan.name == name)
+    return session.exec(stmt).first()
+
+
+def get_clan_by_tag(session: Session, tag: str) -> Clan | None:
+    """Get a clan by tag."""
+    stmt = select(Clan).where(Clan.tag == tag)
+    return session.exec(stmt).first()
+
+
+def get_all_clans(session: Session, limit: int = 100, offset: int = 0) -> list[Clan]:
+    """Get all clans with pagination."""
+    stmt = select(Clan).offset(offset).limit(limit).order_by(Clan.created_at.desc())
+    return list(session.exec(stmt).all())
+
+
+def get_clan_members(session: Session, clan_id: int, position: int | None = None) -> list[ClanMembership]:
+    """
+    Get clan members, optionally filtered by position.
+
+    Args:
+        session: Database session
+        clan_id: Clan ID
+        position: Optional position filter (0=applicant, 1=member, 7=leader)
+
+    Returns:
+        List of ClanMembership objects
+    """
+    stmt = select(ClanMembership).where(ClanMembership.clan_id == clan_id)
+    if position is not None:
+        stmt = stmt.where(ClanMembership.position == position)
+    return list(session.exec(stmt).all())
+
+
+def get_clan_leader(session: Session, clan_id: int) -> Persona | None:
+    """Get the leader persona of a clan."""
+    stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.position == 7,
+    )
+    membership = session.exec(stmt).first()
+    if membership:
+        return get_persona_by_id(session, membership.persona_id)
+    return None
+
+
+def get_persona_clan(session: Session, persona_id: int) -> Clan | None:
+    """Get the clan a persona belongs to (if any)."""
+    stmt = select(ClanMembership).where(ClanMembership.persona_id == persona_id)
+    membership = session.exec(stmt).first()
+    if membership:
+        return get_clan_by_id(session, membership.clan_id)
+    return None
+
+
+def get_persona_clan_membership(session: Session, persona_id: int) -> ClanMembership | None:
+    """Get the clan membership for a persona."""
+    stmt = select(ClanMembership).where(ClanMembership.persona_id == persona_id)
+    return session.exec(stmt).first()
+
+
+def join_clan_as_applicant(session: Session, clan_id: int, persona_id: int) -> ClanMembership:
+    """
+    Request to join a clan as an applicant.
+
+    Args:
+        session: Database session
+        clan_id: Clan ID to join
+        persona_id: Persona ID requesting to join
+
+    Returns:
+        Created ClanMembership (with position=0)
+
+    Raises:
+        ValueError: If persona is already in a clan
+    """
+    existing = get_persona_clan_membership(session, persona_id)
+    if existing:
+        raise ValueError("Persona is already in a clan")
+
+    membership = ClanMembership(
+        clan_id=clan_id,
+        persona_id=persona_id,
+        position=0,  # Applicant
+    )
+    session.add(membership)
+    session.commit()
+    session.refresh(membership)
+    return membership
+
+
+def approve_clan_applicant(session: Session, clan_id: int, persona_id: int) -> ClanMembership | None:
+    """
+    Approve a clan applicant (promote from position 0 to 1).
+
+    Args:
+        session: Database session
+        clan_id: Clan ID
+        persona_id: Persona ID to approve
+
+    Returns:
+        Updated ClanMembership or None if not found
+    """
+    stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.persona_id == persona_id,
+        ClanMembership.position == 0,
+    )
+    membership = session.exec(stmt).first()
+    if membership:
+        membership.position = 1  # Member
+        membership.joined_at = datetime.utcnow()
+        session.add(membership)
+        session.commit()
+        session.refresh(membership)
+    return membership
+
+
+def reject_clan_applicant(session: Session, clan_id: int, persona_id: int) -> bool:
+    """
+    Reject a clan applicant (remove from clan).
+
+    Args:
+        session: Database session
+        clan_id: Clan ID
+        persona_id: Persona ID to reject
+
+    Returns:
+        True if removed, False if not found
+    """
+    stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.persona_id == persona_id,
+        ClanMembership.position == 0,
+    )
+    membership = session.exec(stmt).first()
+    if membership:
+        session.delete(membership)
+        session.commit()
+        return True
+    return False
+
+
+def leave_clan(session: Session, persona_id: int) -> bool:
+    """
+    Leave a clan. Leaders cannot leave unless they transfer leadership first.
+
+    Args:
+        session: Database session
+        persona_id: Persona ID leaving
+
+    Returns:
+        True if left, False if not in clan or is leader
+
+    Raises:
+        ValueError: If persona is the clan leader
+    """
+    membership = get_persona_clan_membership(session, persona_id)
+    if not membership:
+        return False
+    if membership.position == 7:
+        raise ValueError("Leaders must transfer leadership before leaving")
+
+    session.delete(membership)
+    session.commit()
+    return True
+
+
+def kick_from_clan(session: Session, clan_id: int, persona_id: int) -> bool:
+    """
+    Kick a member from the clan. Cannot kick the leader.
+
+    Args:
+        session: Database session
+        clan_id: Clan ID
+        persona_id: Persona ID to kick
+
+    Returns:
+        True if kicked, False if not found or is leader
+    """
+    stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.persona_id == persona_id,
+    )
+    membership = session.exec(stmt).first()
+    if not membership or membership.position == 7:
+        return False
+
+    session.delete(membership)
+    session.commit()
+    return True
+
+
+def promote_to_leader(session: Session, clan_id: int, old_leader_persona_id: int, new_leader_persona_id: int) -> bool:
+    """
+    Transfer leadership from one persona to another.
+
+    Args:
+        session: Database session
+        clan_id: Clan ID
+        old_leader_persona_id: Current leader persona ID
+        new_leader_persona_id: New leader persona ID
+
+    Returns:
+        True if transferred, False if failed
+    """
+    # Get current leader membership
+    old_leader_stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.persona_id == old_leader_persona_id,
+        ClanMembership.position == 7,
+    )
+    old_leader = session.exec(old_leader_stmt).first()
+    if not old_leader:
+        return False
+
+    # Get new leader membership (must be a member, not applicant)
+    new_leader_stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.persona_id == new_leader_persona_id,
+        ClanMembership.position >= 1,
+    )
+    new_leader = session.exec(new_leader_stmt).first()
+    if not new_leader:
+        return False
+
+    # Transfer leadership
+    old_leader.position = 1  # Demote to member
+    new_leader.position = 7  # Promote to leader
+
+    session.add(old_leader)
+    session.add(new_leader)
+    session.commit()
+    return True
+
+
+def get_clan_member_count(session: Session, clan_id: int) -> int:
+    """Get the number of members in a clan (excluding applicants)."""
+    stmt = select(ClanMembership).where(
+        ClanMembership.clan_id == clan_id,
+        ClanMembership.position >= 1,
+    )
+    return len(list(session.exec(stmt).all()))
+
+
+# =============================================================================
+# Web Session Operations
+# =============================================================================
+
+
+def create_web_session_record(session: Session, user_id: int, token: str) -> WebSession:
+    """Create a new web session record."""
+    web_session = WebSession(
+        session_token=token,
+        user_id=user_id,
+        is_active=True,
+    )
+    session.add(web_session)
+    session.commit()
+    session.refresh(web_session)
+    return web_session
+
+
+def get_web_session_record(session: Session, token: str) -> WebSession | None:
+    """Get an active web session by token."""
+    stmt = select(WebSession).where(
+        WebSession.session_token == token,
+        WebSession.is_active == True,
+        WebSession.expires_at > datetime.utcnow(),
+    )
+    return session.exec(stmt).first()
+
+
+def delete_web_session_record(session: Session, token: str) -> bool:
+    """Delete/invalidate a web session."""
+    web_session = get_web_session_record(session, token)
+    if web_session:
+        web_session.is_active = False
+        session.add(web_session)
+        session.commit()
+        return True
+    return False

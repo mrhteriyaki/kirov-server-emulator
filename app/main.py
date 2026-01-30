@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app._version import __version__
 from app.config.app_settings import app_config
 from app.db.database import create_db_and_tables
+from app.rest.routes import clans_api_router
 from app.rest.routes import router as rest_router
 from app.servers.fesl_server import start_fesl_server
 from app.servers.gamestats_server import start_gamestats_server
@@ -26,6 +27,7 @@ from app.soap.sake_service import sake_router
 from app.soap.service import soap_router
 from app.util.logging_helper import setup_logging
 from app.util.paths import get_base_path
+from app.web.routes import router as web_router
 
 
 @asynccontextmanager
@@ -156,6 +158,7 @@ app = FastAPI(
 
 # Mount the REST API router
 app.include_router(rest_router, prefix="/api/rest")
+app.include_router(clans_api_router, prefix="/api/rest")
 
 # Mount the SOAP router (native FastAPI integration)
 app.include_router(soap_router)
@@ -172,6 +175,9 @@ app.include_router(auth_router)
 # Mount the Clan/Ladder stub router
 app.include_router(clan_router)
 
+# Mount the Web router (for HTML pages like leaderboard)
+app.include_router(web_router)
+
 
 @app.get("/health")
 async def health_check():
@@ -180,4 +186,4 @@ async def health_check():
 
 # Mount the static files directory LAST (it's a catch-all for `/`)
 static_path = os.path.join(get_base_path(), "static")
-app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
+app.mount("/", StaticFiles(directory=static_path), name="static")

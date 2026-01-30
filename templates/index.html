@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}RA3 Server - Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Red Alert 3 Server Emulator</h1>
+    <p class="lead">Play Red Alert 3 online with friends using our community server. Full support for ranked matches, leaderboards, and multiplayer.</p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="/register" class="btn btn-primary btn-lg">
+            <i class="bi bi-person-plus me-2"></i>Create Account
+        </a>
+        <a href="/matches" class="btn btn-outline-light btn-lg">
+            <i class="bi bi-broadcast me-2"></i>Live Matches
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-light btn-lg">
+            <i class="bi bi-trophy me-2"></i>Leaderboard
+        </a>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-md-4">
+        <div class="card feature-card">
+            <div class="icon red">
+                <i class="bi bi-lightning-charge-fill"></i>
+            </div>
+            <h3>Online Multiplayer</h3>
+            <p>Play ranked 1v1 and 2v2 matches against other players. Our server handles matchmaking and game coordination.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card feature-card">
+            <div class="icon gold">
+                <i class="bi bi-bar-chart-fill"></i>
+            </div>
+            <h3>ELO Rankings</h3>
+            <p>Compete for the top spot on our leaderboards. Track your wins, losses, and ELO rating across game modes.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card feature-card">
+            <div class="icon blue">
+                <i class="bi bi-people-fill"></i>
+            </div>
+            <h3>Community</h3>
+            <p>Join a community of Red Alert 3 players. Add friends, join clans, and participate in tournaments.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="card-title"><i class="bi bi-rocket-takeoff me-2 text-danger"></i>Getting Started</h3>
+                <ol class="mb-0 list-styled">
+                    <li class="mb-2">Create an account using the <a href="/register">registration page</a></li>
+                    <li class="mb-2">Configure your game to connect to this server</li>
+                    <li class="mb-2">Launch Red Alert 3 and log in with your credentials</li>
+                    <li>Start playing ranked or casual matches!</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h3 class="card-title"><i class="bi bi-terminal me-2 text-info"></i>For Developers</h3>
+                <p>This server provides REST and SOAP APIs for game integration.</p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="/docs" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-book me-1"></i>REST API Docs
+                    </a>
+                    <a href="/api/soap?wsdl" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-file-code me-1"></i>SOAP WSDL
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
